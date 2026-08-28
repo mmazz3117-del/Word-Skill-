@@ -1,3 +1,4 @@
+<!-- My Words version 1.3 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -34,7 +35,7 @@ button,input{font:inherit}
 .modal{position:fixed;inset:0;background:rgba(25,20,55,.38);display:none;place-items:center;padding:18px;z-index:20}.modal.show{display:grid}.sheet{width:min(560px,100%);max-height:80vh;overflow:auto;background:white;border-radius:28px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.18)}.sheet h2{margin-top:0}.close{float:right;border:0;background:var(--soft);width:40px;height:40px;border-radius:12px;cursor:pointer}
 .small{font-size:13px;color:var(--muted)}
 @media (max-width:560px){.app{padding:14px 12px 100px}.brand h1{font-size:32px}.brand p{font-size:13px}.owl{width:54px;height:54px;font-size:32px}.hero{padding:22px 16px;border-radius:26px}.mic{width:140px;height:140px}.lookup{flex-direction:column}.lookup button{padding:14px}.wordtitle{font-size:30px}.item{grid-template-columns:48px 1fr auto}.tile{width:48px;height:48px}.item h3{font-size:19px}}
-</style>
+.versionBadge{display:inline-block;margin-top:7px;padding:4px 9px;border-radius:999px;background:#eee8ff;color:#6842d8;font-size:12px;font-weight:800;letter-spacing:.03em;border:1px solid #d9cdfa}</style>
 
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=3">
   <link rel="icon" type="image/png" sizes="180x180" href="./apple-touch-icon.png?v=3">
@@ -108,12 +109,101 @@ function normalize(w){return w.trim().toLowerCase().replace(/[^a-z'-]/g,'');}
 function title(w){return w ? w.charAt(0).toUpperCase()+w.slice(1) : ''}
 function setStatus(t){$('#status').textContent=t||''}
 
+
+function cleanDefinition(text){
+  let s=String(text||'').trim();
+  // Remove dictionary-editor labels that distract from a plain-English learning app.
+  s=s.replace(/^\s*\((?:countable|uncountable|countable and uncountable|transitive|intransitive|ambitransitive|ditransitive|chiefly|usually|often|sometimes|rare|rarely|archaic|obsolete|dated|informal|formal|slang|colloquial|literary|figurative|historical|technical|biology|botany|zoology|grammar|linguistics)(?:[^)]*)\)\s*/i,'');
+  s=s.replace(/^\s*(?:countable|uncountable|transitive|intransitive|chiefly|usually|often|sometimes|rare|archaic|obsolete|dated|informal|formal|slang|colloquial|literary|figurative)\s*[:;,.-]\s*/i,'');
+  return s.trim();
+}
+
+function stripHtml(text){
+  const div=document.createElement('div');
+  div.innerHTML=String(text||'');
+  return (div.textContent||div.innerText||'').replace(/\s+/g,' ').trim();
+}
+
+function usefulExample(text,word){
+  const s=stripHtml(text).replace(/^\s*[•*#:-]+\s*/,'').trim();
+  if(!s || s.length<8 || s.length>220) return '';
+  // Prefer examples that actually contain the looked-up word (or an obvious inflection).
+  const stem=word.replace(/e$/,'');
+  const rx=new RegExp(`\\b${stem.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\w*\\b`,'i');
+  return rx.test(s)?s:'';
+}
+
+async function fetchWiktionaryEntry(word){
+  try{
+    const r=await fetch(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word)}`);
+    if(!r.ok) return null;
+    const data=await r.json();
+    const groups=Array.isArray(data?.en)?data.en:[];
+    for(const group of groups){
+      const pos=group?.partOfSpeech||group?.part_of_speech||group?.partofspeech||'';
+      const defs=Array.isArray(group?.definitions)?group.definitions:[];
+      for(const d of defs){
+        const rawDef=typeof d==='string'?d:(d?.definition||d?.text||'');
+        const def=cleanDefinition(stripHtml(rawDef));
+        if(!def) continue;
+        let examples=[];
+        const ex=d?.examples||d?.example||group?.examples||[];
+        const arr=Array.isArray(ex)?ex:[ex];
+        examples=arr.map(x=>typeof x==='string'?x:(x?.text||x?.example||''))
+          .map(x=>usefulExample(x,word)).filter(Boolean);
+        return {word,partOfSpeech:pos,phonetic:'',definition:def,examples:[...new Set(examples)].slice(0,3)};
+      }
+    }
+  }catch(e){}
+  return null;
+}
+
+function naturalFallbackExamples(word,pos,definition){
+  // No fake "dictionary" filler. These are short, natural usage sentences based on part of speech.
+  // They are only used when the public dictionaries return fewer than three quoted examples.
+  const w=word;
+  const p=String(pos||'').toLowerCase();
+  if(p.includes('noun')){
+    return [
+      `She noticed the ${w} immediately.`,
+      `The ${w} became an important part of the scene.`,
+      `They talked about the ${w} later that evening.`
+    ];
+  }
+  if(p.includes('verb')){
+    return [
+      `He began to ${w} as soon as he understood what was happening.`,
+      `She tried to ${w} without drawing attention to herself.`,
+      `They watched him ${w} from across the room.`
+    ];
+  }
+  if(p.includes('adjective')){
+    return [
+      `The path was unusually ${w} as it wound through the landscape.`,
+      `She described the scene as ${w}, and the word fit perfectly.`,
+      `There was something distinctly ${w} about the way it appeared.`
+    ];
+  }
+  if(p.includes('adverb')){
+    return [
+      `She moved ${w} through the crowded room.`,
+      `He answered ${w}, making his meaning clear.`,
+      `The story unfolded ${w} from that point onward.`
+    ];
+  }
+  return [
+    `The writer used “${w}” naturally in the passage.`,
+    `The word “${w}” gave the sentence a more precise meaning.`,
+    `After seeing “${w}” in context, its meaning became clearer.`
+  ];
+}
+
 function parseDatamuseDefinition(item, word){
   if(!item || !Array.isArray(item.defs) || !item.defs.length) return null;
   const first=item.defs[0]||'';
   const tab=first.indexOf('\t');
   const tag=tab>=0?first.slice(0,tab):'';
-  const definition=tab>=0?first.slice(tab+1):first;
+  const definition=cleanDefinition(tab>=0?first.slice(tab+1):first);
   const posMap={n:'noun',v:'verb',adj:'adjective',adv:'adverb',u:'unknown'};
   const partOfSpeech=posMap[tag]||tag||((item.tags||[]).find(t=>['n','v','adj','adv'].includes(t))||'');
   const pron=(item.tags||[]).find(t=>t.startsWith('pron:'));
@@ -135,13 +225,27 @@ async function lookupWord(raw){
       const meaning=(d?.meanings||[]).find(m=>m?.definitions?.some(x=>x?.definition)) || d?.meanings?.[0];
       const def=meaning?.definitions?.find(x=>x?.definition);
       if(def?.definition){
-        entry={word,partOfSpeech:meaning.partOfSpeech||'',phonetic:d.phonetic||d.phonetics?.find(p=>p.text)?.text||'',definition:def.definition,examples:[def.example,...(meaning.definitions||[]).map(x=>x.example)].filter(Boolean).slice(0,3)};
+        entry={word,partOfSpeech:meaning.partOfSpeech||'',phonetic:d.phonetic||d.phonetics?.find(p=>p.text)?.text||'',definition:cleanDefinition(def.definition),examples:[def.example,...(meaning.definitions||[]).map(x=>x.example)].filter(Boolean).slice(0,3)};
       }
     }
   }catch(e){}
 
-  // Source 2: Datamuse/WordNet metadata. This catches many literary or less-common words
-  // that the first dictionary does not return.
+  // Source 2: Wiktionary — broad literary coverage and genuine usage examples.
+  if(!entry || (entry.examples||[]).length<3){
+    const wiki=await fetchWiktionaryEntry(word);
+    if(wiki){
+      if(!entry) entry=wiki;
+      else{
+        const merged=[...(entry.examples||[]),...(wiki.examples||[])].filter(Boolean);
+        entry.examples=[...new Set(merged)].slice(0,3);
+        if(!entry.definition) entry.definition=wiki.definition;
+        if(!entry.partOfSpeech) entry.partOfSpeech=wiki.partOfSpeech;
+      }
+    }
+  }
+
+  // Source 3: Datamuse/WordNet metadata. This catches many literary or less-common words
+  // that the first dictionaries do not return.
   if(!entry){
     try{
       const r=await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(word)}&md=dpr&max=10`);
@@ -153,7 +257,7 @@ async function lookupWord(raw){
     }catch(e){}
   }
 
-  // Source 3: small on-device safety net for known test/literary words.
+  // Source 4: small on-device safety net for known test/literary words.
   if(!entry && fallback[word]) entry={word,...fallback[word]};
 
   if(!entry){
@@ -161,15 +265,12 @@ async function lookupWord(raw){
     return;
   }
 
-  entry.examples=Array.isArray(entry.examples)?entry.examples:[];
+  entry.definition=cleanDefinition(entry.definition);
+  entry.examples=(Array.isArray(entry.examples)?entry.examples:[])
+    .map(x=>stripHtml(x)).filter(Boolean);
   if(entry.examples.length<3){
-    const base=entry.definition.replace(/[.;]$/,'');
-    const generic=[
-      `The author used “${word}” in a way that matched this meaning: ${base}.`,
-      `After learning “${word},” I noticed it more often while reading.`,
-      `Using “${word}” in a sentence can help make the meaning stick.`
-    ];
-    entry.examples=[...entry.examples,...generic].slice(0,3);
+    const natural=naturalFallbackExamples(word,entry.partOfSpeech,entry.definition);
+    entry.examples=[...new Set([...entry.examples,...natural])].slice(0,3);
   }
   current=entry;
   saveCurrent();
@@ -275,7 +376,7 @@ function startQuiz(){
   openModal(`<h2>Quiz Me</h2><p>Which word means:</p><p style="font-size:20px;font-weight:800">${escapeHtml(correct.definition)}</p><div class="actions">${options.map(o=>`<button class="pill quizOption" data-answer="${escapeHtml(o.word)}" data-correct="${escapeHtml(correct.word)}">${escapeHtml(title(o.word))}</button>`).join('')}</div><div id="quizFeedback" class="status"></div>`);
   document.querySelectorAll('.quizOption').forEach(btn=>btn.onclick=()=>{$('#quizFeedback').textContent=btn.dataset.answer===btn.dataset.correct?'✅ Correct!':`Not quite — the answer is ${title(btn.dataset.correct)}.`;});
 }
-$('#clearBtn').onclick=()=>openModal(`<h2>Settings</h2><p class="small">Your saved words live only in this browser using local storage.</p><button class="pill" id="clearAll">Clear all saved words</button>`);
+$('#clearBtn').onclick=()=>openModal(`<h2>Settings</h2><p class="small">Your saved words live only in this browser using local storage.</p><p class="small"><b>Microphone:</b> My Words only turns the microphone on after you tap the purple mic. iPhone controls whether permission is remembered between sessions.</p><button class="pill" id="clearAll">Clear all saved words</button>`);
 document.addEventListener('click',e=>{if(e.target?.id==='clearAll'){if(confirm('Clear all saved words?')){words=[];saveStore();$('#modal').classList.remove('show');$('#result').classList.remove('show')}}});
 
 renderRecent();
