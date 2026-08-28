@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <meta name="theme-color" content="#6f48dc" />
 <title>My Words</title>
+<meta name="application-name" content="My Words" />
+<meta name="apple-mobile-web-app-title" content="My Words" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <style>
 :root{
   --bg:#f7f6fb; --card:#ffffff; --ink:#1f2454; --muted:#75799a; --purple:#6f48dc; --purple2:#8d67ee;
@@ -32,8 +36,8 @@ button,input{font:inherit}
 @media (max-width:560px){.app{padding:14px 12px 100px}.brand h1{font-size:32px}.brand p{font-size:13px}.owl{width:54px;height:54px;font-size:32px}.hero{padding:22px 16px;border-radius:26px}.mic{width:140px;height:140px}.lookup{flex-direction:column}.lookup button{padding:14px}.wordtitle{font-size:30px}.item{grid-template-columns:48px 1fr auto}.tile{width:48px;height:48px}.item h3{font-size:19px}}
 </style>
 
-  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=2">
-  <link rel="icon" type="image/png" sizes="180x180" href="./apple-touch-icon.png?v=2">
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=3">
+  <link rel="icon" type="image/png" sizes="180x180" href="./apple-touch-icon.png?v=3">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="My Words">
@@ -95,7 +99,8 @@ let current=null;
 const fallback = {
   obsequious:{partOfSpeech:'adjective',phonetic:'uhb-SEE-kwee-us',definition:'Excessively eager to please or obey someone, especially in a way that seems insincere.',examples:['His obsequious behavior toward his boss annoyed his coworkers.','The waiter was polite without being obsequious.','She distrusted the politician’s obsequious praise of the wealthy donor.']},
   perfunctory:{partOfSpeech:'adjective',phonetic:'per-FUNK-tuh-ree',definition:'Done with little care, effort, or interest.',examples:['He gave the room a perfunctory glance before leaving.','Her apology sounded perfunctory rather than sincere.','The inspection was so perfunctory that several problems were missed.']},
-  incredulous:{partOfSpeech:'adjective',phonetic:'in-KREJ-uh-lus',definition:'Unwilling or unable to believe something.',examples:['She gave him an incredulous look.','The audience was incredulous when the result was announced.','He sounded incredulous at the suggestion that he had forgotten.']}
+  incredulous:{partOfSpeech:'adjective',phonetic:'in-KREJ-uh-lus',definition:'Unwilling or unable to believe something.',examples:['She gave him an incredulous look.','The audience was incredulous when the result was announced.','He sounded incredulous at the suggestion that he had forgotten.']},
+  sinuous:{partOfSpeech:'adjective',phonetic:'SIN-yoo-us',definition:'Having many curves and turns; winding or flowing in a graceful, smooth way.',examples:['A sinuous path wound through the forest.','The river followed a sinuous course through the valley.','The dancer moved with a slow, sinuous grace.']}
 };
 
 function saveStore(){localStorage.setItem(storeKey,JSON.stringify(words));renderRecent();}
@@ -103,22 +108,65 @@ function normalize(w){return w.trim().toLowerCase().replace(/[^a-z'-]/g,'');}
 function title(w){return w ? w.charAt(0).toUpperCase()+w.slice(1) : ''}
 function setStatus(t){$('#status').textContent=t||''}
 
+function parseDatamuseDefinition(item, word){
+  if(!item || !Array.isArray(item.defs) || !item.defs.length) return null;
+  const first=item.defs[0]||'';
+  const tab=first.indexOf('\t');
+  const tag=tab>=0?first.slice(0,tab):'';
+  const definition=tab>=0?first.slice(tab+1):first;
+  const posMap={n:'noun',v:'verb',adj:'adjective',adv:'adverb',u:'unknown'};
+  const partOfSpeech=posMap[tag]||tag||((item.tags||[]).find(t=>['n','v','adj','adv'].includes(t))||'');
+  const pron=(item.tags||[]).find(t=>t.startsWith('pron:'));
+  return {word,partOfSpeech:posMap[partOfSpeech]||partOfSpeech,phonetic:pron?pron.slice(5):'',definition,examples:[]};
+}
+
 async function lookupWord(raw){
   const word=normalize(raw); if(!word) return;
   $('#wordInput').value=word; setStatus('Looking it up…'); $('#result').classList.remove('show');
   let entry=null;
+
+  // Source 1: Free Dictionary API — usually provides the richest definitions/examples.
   try{
     const r=await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
     if(r.ok){
-      const data=await r.json(); const d=data?.[0]; const m=d?.meanings?.[0]; const def=m?.definitions?.[0];
-      if(def?.definition){entry={word,partOfSpeech:m.partOfSpeech||'',phonetic:d.phonetic||d.phonetics?.find(p=>p.text)?.text||'',definition:def.definition,examples:[def.example,...(m.definitions||[]).map(x=>x.example)].filter(Boolean).slice(0,3)};}
+      const data=await r.json(); const d=data?.[0];
+      const meaning=(d?.meanings||[]).find(m=>m?.definitions?.some(x=>x?.definition)) || d?.meanings?.[0];
+      const def=meaning?.definitions?.find(x=>x?.definition);
+      if(def?.definition){
+        entry={word,partOfSpeech:meaning.partOfSpeech||'',phonetic:d.phonetic||d.phonetics?.find(p=>p.text)?.text||'',definition:def.definition,examples:[def.example,...(meaning.definitions||[]).map(x=>x.example)].filter(Boolean).slice(0,3)};
+      }
     }
   }catch(e){}
+
+  // Source 2: Datamuse/WordNet metadata. This catches many literary or less-common words
+  // that the first dictionary does not return.
+  if(!entry){
+    try{
+      const r=await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(word)}&md=dpr&max=10`);
+      if(r.ok){
+        const data=await r.json();
+        const exact=(data||[]).find(x=>String(x.word||'').toLowerCase()===word && Array.isArray(x.defs) && x.defs.length);
+        entry=parseDatamuseDefinition(exact,word);
+      }
+    }catch(e){}
+  }
+
+  // Source 3: small on-device safety net for known test/literary words.
   if(!entry && fallback[word]) entry={word,...fallback[word]};
-  if(!entry){setStatus('I couldn’t find that word. Check the spelling and try again.');return;}
+
+  if(!entry){
+    setStatus('I couldn’t verify that word with the available dictionaries. Check the spelling or try again.');
+    return;
+  }
+
+  entry.examples=Array.isArray(entry.examples)?entry.examples:[];
   if(entry.examples.length<3){
     const base=entry.definition.replace(/[.;]$/,'');
-    const generic=[`The author used “${word}” in a way that matched this meaning: ${base}.`,`After learning “${word},” I noticed it more often while reading.`,`Using “${word}” in a sentence can help make the meaning stick.`];
+    const generic=[
+      `The author used “${word}” in a way that matched this meaning: ${base}.`,
+      `After learning “${word},” I noticed it more often while reading.`,
+      `Using “${word}” in a sentence can help make the meaning stick.`
+    ];
     entry.examples=[...entry.examples,...generic].slice(0,3);
   }
   current=entry; setStatus(''); showResult(entry);
