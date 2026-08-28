@@ -26,7 +26,7 @@ button,input{font:inherit}
 .divider{display:flex;align-items:center;gap:12px;margin:22px 0 14px;color:var(--muted)}.divider:before,.divider:after{content:"";height:1px;background:var(--line);flex:1}
 .lookup{display:flex;gap:10px}.lookup input{flex:1;border:2px solid #bba9f4;border-radius:18px;padding:15px 16px;outline:none;background:#fff}.lookup button{border:0;border-radius:18px;padding:0 20px;color:white;font-weight:800;background:linear-gradient(145deg,var(--purple2),var(--purple));box-shadow:0 10px 20px rgba(89,58,190,.18);cursor:pointer}
 .status{min-height:24px;color:var(--purple);font-weight:700;margin-top:12px}
-.result{display:none;text-align:left;margin-top:20px;padding:22px;border-radius:24px;background:#fbfaff;border:1px solid var(--line)}.result.show{display:block}.wordline{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.wordtitle{font-size:34px;font-weight:900;margin:0}.meta{color:var(--purple);font-weight:700;margin-top:4px}.simple{font-size:18px;line-height:1.5;margin:14px 0}.examples{margin:14px 0 0;padding-left:22px;color:#444a70}.examples li{margin:10px 0;line-height:1.45}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.pill{border:1px solid #d9d0f7;background:white;color:var(--ink);border-radius:999px;padding:10px 14px;cursor:pointer}.pill.primary{background:var(--purple);color:white;border-color:var(--purple)}
+.result{display:none;text-align:left;margin-top:20px;padding:22px;border-radius:24px;background:#fbfaff;border:1px solid var(--line)}.result.show{display:block}.wordline{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.wordtitle{font-size:34px;font-weight:900;margin:0}.meta{color:var(--purple);font-weight:700;margin-top:4px}.simple{font-size:18px;line-height:1.5;margin:14px 0}.examples{margin:16px 0 0;padding:0;list-style:none;display:grid;gap:10px}.examples li{margin:0;line-height:1.5;padding:13px 15px 13px 46px;border-radius:16px;position:relative;border:1px solid transparent}.examples li:before{content:"“";position:absolute;left:16px;top:5px;font-size:34px;font-weight:900;line-height:1}.examples li:nth-child(3n+1){background:#effaf2;border-color:#c5e8cc;color:#344f3b}.examples li:nth-child(3n+1):before{color:#50a864}.examples li:nth-child(3n+2){background:#f4efff;border-color:#ddd0ff;color:#4c426b}.examples li:nth-child(3n+2):before{color:#7651df}.examples li:nth-child(3n){background:#eef7ff;border-color:#c9e3fa;color:#38506b}.examples li:nth-child(3n):before{color:#4a99df}.exampleWord{color:var(--purple);font-weight:800}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}.pill{border:1px solid #d9d0f7;background:white;color:var(--ink);border-radius:999px;padding:10px 14px;cursor:pointer}.pill.primary{background:var(--purple);color:white;border-color:var(--purple)}.pill.saved{background:#f1ecff;color:var(--purple);border-color:#d8cdf8;font-weight:800;cursor:default}
 .section{margin-top:28px}.sectionhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}.sectionhead h2{margin:0;font-size:26px}.sectionhead button{border:0;background:none;color:var(--purple);font-weight:700;cursor:pointer}
 .list{display:grid;gap:12px}.item{background:var(--card);border:1px solid var(--line);border-radius:22px;padding:16px;box-shadow:0 8px 24px rgba(45,30,110,.06);display:grid;grid-template-columns:54px 1fr auto;gap:12px;align-items:center}.tile{width:54px;height:54px;border-radius:16px;background:var(--soft);display:grid;place-items:center;font-size:26px}.item h3{margin:0 0 4px;font-size:22px}.item p{margin:0;color:var(--muted)}.star{border:0;background:none;font-size:30px;cursor:pointer;color:#9a9db4}.star.on{color:var(--gold)}
 .empty{padding:22px;background:#fff;border:1px dashed #cfc7eb;border-radius:20px;color:var(--muted);text-align:center}
@@ -70,7 +70,7 @@ button,input{font:inherit}
       <ul class="examples" id="resExamples"></ul>
       <div class="actions">
         <button class="pill" id="speakBtn">🔊 Hear it</button>
-        <button class="pill primary" id="saveBtn">＋ Save word</button>
+        <button class="pill saved" id="saveBtn" type="button" disabled>✓ Saved automatically</button>
       </div>
     </div>
   </section>
@@ -117,7 +117,9 @@ function parseDatamuseDefinition(item, word){
   const posMap={n:'noun',v:'verb',adj:'adjective',adv:'adverb',u:'unknown'};
   const partOfSpeech=posMap[tag]||tag||((item.tags||[]).find(t=>['n','v','adj','adv'].includes(t))||'');
   const pron=(item.tags||[]).find(t=>t.startsWith('pron:'));
-  return {word,partOfSpeech:posMap[partOfSpeech]||partOfSpeech,phonetic:pron?pron.slice(5):'',definition,examples:[]};
+  let phonetic=pron?pron.slice(5).trim():'';
+  if (/\d/.test(phonetic) || (/^[A-Z\s]+$/.test(phonetic) && phonetic.includes(' '))) phonetic='';
+  return {word,partOfSpeech:posMap[partOfSpeech]||partOfSpeech,phonetic,definition,examples:[]};
 }
 
 async function lookupWord(raw){
@@ -169,18 +171,40 @@ async function lookupWord(raw){
     ];
     entry.examples=[...entry.examples,...generic].slice(0,3);
   }
-  current=entry; setStatus(''); showResult(entry);
+  current=entry;
+  saveCurrent();
+  setStatus('');
+  showResult(entry);
 }
 
+function exampleHtml(sentence,word){
+  const safeSentence=escapeHtml(sentence);
+  const safeWord=escapeHtml(word);
+  const escapedWord=safeWord.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const rx=new RegExp(`\\b(${escapedWord})\\b`,'gi');
+  return safeSentence.replace(rx,'<span class="exampleWord">$1</span>');
+}
 function showResult(e){
   $('#resWord').textContent=title(e.word); $('#resMeta').textContent=[e.partOfSpeech,e.phonetic].filter(Boolean).join(' · ');
-  $('#resDefinition').textContent=e.definition; $('#resExamples').innerHTML=e.examples.map(x=>`<li>${escapeHtml(x)}</li>`).join('');
+  $('#resDefinition').textContent=e.definition; $('#resExamples').innerHTML=e.examples.map(x=>`<li>${exampleHtml(x,e.word)}</li>`).join('');
   const saved=words.find(x=>x.word===e.word); $('#resStar').textContent=saved?.favorite?'★':'☆'; $('#resStar').classList.toggle('on',!!saved?.favorite);
-  $('#saveBtn').textContent=saved?'✓ Saved':'＋ Save word'; $('#result').classList.add('show');
+  $('#saveBtn').textContent='✓ Saved automatically'; $('#result').classList.add('show');
 }
 function escapeHtml(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 
-function saveCurrent(){if(!current)return; const old=words.find(x=>x.word===current.word); if(!old) words.unshift({...current,favorite:false,added:Date.now()}); saveStore(); showResult(current);}
+function saveCurrent(){
+  if(!current)return;
+  const now=Date.now();
+  const idx=words.findIndex(x=>x.word===current.word);
+  if(idx>=0){
+    const old=words[idx];
+    words.splice(idx,1);
+    words.unshift({...current,favorite:!!old.favorite,added:old.added||now,lastViewed:now});
+  }else{
+    words.unshift({...current,favorite:false,added:now,lastViewed:now});
+  }
+  saveStore();
+}
 function toggleFavorite(word){const x=words.find(w=>w.word===word); if(x){x.favorite=!x.favorite;saveStore(); if(current?.word===word)showResult(current);}}
 function renderRecent(list=words.slice(0,6)){
   const el=$('#recentList'); if(!list.length){el.innerHTML='<div class="empty">Your saved words will appear here.</div>';return;}
@@ -189,18 +213,49 @@ function renderRecent(list=words.slice(0,6)){
 
 $('#lookupBtn').onclick=()=>lookupWord($('#wordInput').value);
 $('#wordInput').addEventListener('keydown',e=>{if(e.key==='Enter')lookupWord(e.target.value)});
-$('#saveBtn').onclick=saveCurrent;
 $('#resStar').onclick=()=>{if(!current)return; saveCurrent(); toggleFavorite(current.word)};
 $('#speakBtn').onclick=()=>{if(current && 'speechSynthesis' in window){speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(current.word));}};
 $('#recentList').onclick=e=>{const star=e.target.closest('[data-star]'); if(star){e.stopPropagation();toggleFavorite(star.dataset.star);return;} const item=e.target.closest('[data-word]'); if(item){const w=words.find(x=>x.word===item.dataset.word); if(w){current=w;showResult(w);window.scrollTo({top:0,behavior:'smooth'})}}};
 
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 if(SR){
-  const rec=new SR(); rec.lang='en-US'; rec.interimResults=false; rec.maxAlternatives=3;
-  $('#micBtn').onclick=()=>{setStatus('Listening…');$('#micBtn').classList.add('listening');try{rec.start()}catch(e){}};
-  rec.onresult=e=>{const heard=e.results[0][0].transcript.trim().split(/\s+/)[0]; setStatus(`I heard: “${heard}”`); $('#wordInput').value=heard; setTimeout(()=>lookupWord(heard),350)};
-  rec.onerror=()=>setStatus('I couldn’t hear that clearly. Try again or type the word.');
-  rec.onend=()=>$('#micBtn').classList.remove('listening');
+  const rec=new SR();
+  rec.lang='en-US';
+  rec.interimResults=false;
+  rec.maxAlternatives=3;
+  rec.continuous=false;
+  let listening=false;
+
+  function stopListening(){
+    listening=false;
+    $('#micBtn').classList.remove('listening');
+    try{rec.stop()}catch(e){}
+  }
+
+  $('#micBtn').onclick=()=>{
+    if(listening){ stopListening(); return; }
+    listening=true;
+    setStatus('Listening…');
+    $('#micBtn').classList.add('listening');
+    try{rec.start()}catch(e){
+      listening=false;
+      $('#micBtn').classList.remove('listening');
+    }
+  };
+
+  rec.onresult=e=>{
+    const heard=e.results?.[0]?.[0]?.transcript?.trim().split(/\s+/)[0]||'';
+    stopListening();
+    if(!heard) return;
+    $('#wordInput').value=heard;
+    setStatus(`I heard: “${heard}”`);
+    setTimeout(()=>lookupWord(heard),150);
+  };
+
+  rec.onspeechend=stopListening;
+  rec.onnomatch=()=>{stopListening();setStatus('I couldn’t hear that clearly. Try again or type the word.');};
+  rec.onerror=()=>{stopListening();setStatus('I couldn’t hear that clearly. Try again or type the word.');};
+  rec.onend=()=>{listening=false;$('#micBtn').classList.remove('listening');};
 }else{$('#micBtn').onclick=()=>setStatus('Voice entry is not supported by this browser. You can still type the word below.');}
 
 function openModal(html){$('#modalContent').innerHTML=html;$('#modal').classList.add('show')}
