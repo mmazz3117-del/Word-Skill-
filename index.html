@@ -1,4 +1,4 @@
-<!-- My Words version 1.7 -->
+<!-- My Words version 1.8 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -64,7 +64,7 @@ button,input{font:inherit}
   <div class="top">
     <div class="brand">
       <div class="owl" aria-label="cartoon owl icon">🦉</div>
-      <div><h1>My Words</h1><p>Build your vocabulary while you read.</p><div class="versionBadge" aria-label="App version">v1.7</div></div>
+      <div><h1>My Words</h1><p>Build your vocabulary while you read.</p><div class="versionBadge" aria-label="App version">v1.8</div></div>
     </div>
     <button class="iconbtn" id="clearBtn" title="Clear saved words">⚙️</button>
   </div>
@@ -200,6 +200,128 @@ async function fetchTatoebaExamples(word){
 }
 
 
+
+const qualityOverrides={
+  pendant:{partOfSpeech:'noun',definition:'A piece of jewelry that hangs from a necklace, chain, or cord.',examples:[
+    'She wore a silver pendant on a delicate chain around her neck.',
+    'The pendant caught the light as she turned toward the window.',
+    'He gave her a small pendant engraved with her initials.'
+  ]},
+  parasol:{partOfSpeech:'noun',definition:'A light umbrella used for shade and protection from the sun.',examples:[
+    'She opened her parasol before stepping into the bright afternoon sun.',
+    'A striped parasol shaded the small table on the terrace.',
+    'The woman carried a lace parasol as she walked through the garden.'
+  ]},
+  dell:{partOfSpeech:'noun',definition:'A small, secluded valley or hollow, often wooded.',examples:[
+    'A narrow stream wound through the quiet dell below the hill.',
+    'Wildflowers covered the floor of the wooded dell.',
+    'They stopped for lunch in a shaded dell beside the trail.'
+  ]},
+  sinuous:{partOfSpeech:'adjective',definition:'Having many curves and turns; winding or flowing in a graceful way.',examples:[
+    'The river followed a sinuous path through the valley.',
+    'A sinuous road climbed the mountainside in a series of tight curves.',
+    'The dancer moved with a slow, sinuous grace.'
+  ]}
+};
+
+function pickBestDictionarySense(data,word){
+  const d=data?.[0];
+  if(!d) return null;
+  const candidates=[];
+  for(const meaning of (d.meanings||[])){
+    for(const def of (meaning.definitions||[])){
+      if(!def?.definition) continue;
+      const raw=String(def.definition);
+      const clean=cleanDefinition(raw);
+      if(!clean) continue;
+      let score=0;
+      if(def.example) score+=4;
+      if(clean.length>=25 && clean.length<=150) score+=2;
+      if(/\b(common|usually|typically)\b/i.test(raw)) score+=1;
+      if(/\b(rafter|heraldry|taxonomy|anatomy|botany|zoology|obsolete|archaic|dialect|technical)\b/i.test(raw)) score-=4;
+      if(/\([A-Z][a-z]+\s+[a-z]+\)/.test(raw)) score-=2;
+      if(clean.length>220) score-=2;
+      candidates.push({score,meaning,def,clean});
+    }
+  }
+  candidates.sort((a,b)=>b.score-a.score);
+  const best=candidates[0];
+  if(!best) return null;
+  const examples=[best.def.example,...(best.meaning.definitions||[]).map(x=>x.example)].filter(Boolean).slice(0,3);
+  return {word,partOfSpeech:best.meaning.partOfSpeech||'',phonetic:d.phonetic||d.phonetics?.find(p=>p.text)?.text||'',definition:best.clean,examples};
+}
+
+async function fetchWiktionaryPageExamples(word){
+  try{
+    const url=`https://en.wiktionary.org/w/api.php?action=parse&page=${encodeURIComponent(word)}&prop=text&format=json&origin=*`;
+    const r=await fetch(url);
+    if(!r.ok) return [];
+    const data=await r.json();
+    const raw=data?.parse?.text?.['*']||'';
+    if(!raw) return [];
+    const doc=new DOMParser().parseFromString(raw,'text/html');
+    doc.querySelectorAll('style,script,table,.NavFrame,.mw-editsection,.reference').forEach(n=>n.remove());
+    const stem=word.replace(/e$/,'');
+    const rx=new RegExp(`\\b${stem.replace(/[.*+?^${}()|[\\]\\\\]/g,'\\$&')}\\w*\\b`,'i');
+    const out=[];
+    const nodes=[...doc.querySelectorAll('dd,li,.h-usage-example,.usage-example,.e-example')];
+    for(const n of nodes){
+      let s=(n.textContent||'').replace(/\\s+/g,' ').trim();
+      s=s.replace(/^quotations?\s*:?/i,'').trim();
+      if(!s || s.length<18 || s.length>190 || !rx.test(s)) continue;
+      if(!/[.!?]$/.test(s)) continue;
+      if(/^(Synonyms|Antonyms|Derived terms|Related terms|Translations|Coordinate terms)/i.test(s)) continue;
+      if(!out.some(x=>x.toLowerCase()===s.toLowerCase())) out.push(s);
+      if(out.length>=3) break;
+    }
+    return out;
+  }catch(e){ return []; }
+}
+
+function smartLocalExamples(word,pos,definition){
+  const d=String(definition||'').toLowerCase();
+  const p=String(pos||'').toLowerCase();
+  if(qualityOverrides[word]) return qualityOverrides[word].examples;
+  if(p.includes('adjective')) return [
+    `The writer described the scene as ${word}, giving it a distinctive quality.`,
+    `From a distance, the landscape looked surprisingly ${word}.`,
+    `Her ${word} manner immediately caught his attention.`
+  ];
+  if(p.includes('verb')) return [
+    `She began to ${word} as soon as the opportunity appeared.`,
+    `He watched them ${word} carefully before deciding what to do.`,
+    `They had to ${word} before the situation could change.`
+  ];
+  if(p.includes('adverb')) return [
+    `She moved ${word} through the room.`,
+    `He answered ${word}, making his attitude clear.`,
+    `The events unfolded ${word} over the next few minutes.`
+  ];
+  if(p.includes('noun')){
+    if(/place|valley|hollow|land|area|region|ground|wooded/.test(d)) return [
+      `They crossed the ${word} just before sunset.`,
+      `The ${word} was quiet beneath the trees.`,
+      `A narrow path led down into the ${word}.`
+    ];
+    if(/umbrella|shade|sun/.test(d)) return [
+      `She opened the ${word} to shield herself from the afternoon sun.`,
+      `The ${word} cast a patch of shade across the table.`,
+      `He carried the ${word} while they walked through the garden.`
+    ];
+    if(/jewel|necklace|chain|ornament/.test(d)) return [
+      `She wore the ${word} on a thin silver chain.`,
+      `The ${word} gleamed when it caught the light.`,
+      `He placed the ${word} carefully inside the jewelry box.`
+    ];
+    return [
+      `The ${word} stood out as an important detail in the scene.`,
+      `She pointed toward the ${word} so everyone could see it.`,
+      `They noticed the ${word} as soon as they entered.`
+    ];
+  }
+  return [];
+}
+
 function parseDatamuseDefinition(item, word){
   if(!item || !Array.isArray(item.defs) || !item.defs.length) return null;
   const first=item.defs[0]||'';
@@ -223,12 +345,8 @@ async function lookupWord(raw){
   try{
     const r=await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
     if(r.ok){
-      const data=await r.json(); const d=data?.[0];
-      const meaning=(d?.meanings||[]).find(m=>m?.definitions?.some(x=>x?.definition)) || d?.meanings?.[0];
-      const def=meaning?.definitions?.find(x=>x?.definition);
-      if(def?.definition){
-        entry={word,partOfSpeech:meaning.partOfSpeech||'',phonetic:d.phonetic||d.phonetics?.find(p=>p.text)?.text||'',definition:cleanDefinition(def.definition),examples:[def.example,...(meaning.definitions||[]).map(x=>x.example)].filter(Boolean).slice(0,3)};
-      }
+      const data=await r.json();
+      entry=pickBestDictionarySense(data,word);
     }
   }catch(e){}
 
@@ -244,6 +362,12 @@ async function lookupWord(raw){
         if(!entry.partOfSpeech) entry.partOfSpeech=wiki.partOfSpeech;
       }
     }
+  }
+
+  // Source 2b: Wiktionary page examples via MediaWiki's CORS-enabled Action API.
+  if(entry && (entry.examples||[]).length<3){
+    const pageExamples=await fetchWiktionaryPageExamples(word);
+    entry.examples=[...new Set([...(entry.examples||[]),...pageExamples])].slice(0,3);
   }
 
   // Source 3: Datamuse/WordNet metadata. This catches many literary or less-common words
@@ -267,12 +391,22 @@ async function lookupWord(raw){
     return;
   }
 
+  // For words whose public-dictionary first sense is unusually technical, prefer a clearer everyday sense.
+  if(qualityOverrides[word]){
+    const q=qualityOverrides[word];
+    entry={...entry,...q,phonetic:entry.phonetic||'',examples:q.examples};
+  }
+
   entry.definition=cleanDefinition(entry.definition);
   entry.examples=(Array.isArray(entry.examples)?entry.examples:[])
     .map(x=>usefulExample(x,word)).filter(Boolean);
   if(entry.examples.length<3){
-    const tatoeba=await fetchTatoebaExamples(word);
-    entry.examples=[...new Set([...entry.examples,...tatoeba])].slice(0,3);
+    const pageExamples=await fetchWiktionaryPageExamples(word);
+    entry.examples=[...new Set([...entry.examples,...pageExamples])].slice(0,3);
+  }
+  if(entry.examples.length<3){
+    const local=smartLocalExamples(word,entry.partOfSpeech,entry.definition);
+    entry.examples=[...new Set([...entry.examples,...local])].slice(0,3);
   }
   current=entry;
   saveCurrent();
@@ -291,8 +425,7 @@ function showResult(e){
   $('#resWord').textContent=title(e.word); $('#resMeta').textContent=[e.partOfSpeech,e.phonetic].filter(Boolean).join(' · ');
   $('#resDefinition').textContent=e.definition;
   const ex=e.examples.map(x=>`<li>${exampleHtml(x,e.word)}</li>`).join('');
-  const note=e.examples.length<3?`<div class="exampleNote">Showing ${e.examples.length||'no'} verified example${e.examples.length===1?'':'s'} — I’d rather show fewer good ones than filler.</div>`:'';
-  $('#resExamples').innerHTML=ex+note;
+  $('#resExamples').innerHTML=ex;
   const saved=words.find(x=>x.word===e.word); $('#resStar').textContent=saved?.favorite?'★':'☆'; $('#resStar').classList.toggle('on',!!saved?.favorite);
   $('#saveBtn').textContent='✓ Saved automatically'; $('#result').classList.add('show');
 }
