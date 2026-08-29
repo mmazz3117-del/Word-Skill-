@@ -1,4 +1,4 @@
-<!-- My Words version 1.4 -->
+<!-- My Words version 1.5 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -35,7 +35,7 @@ button,input{font:inherit}
 .modal{position:fixed;inset:0;background:rgba(25,20,55,.38);display:none;place-items:center;padding:18px;z-index:20}.modal.show{display:grid}.sheet{width:min(560px,100%);max-height:80vh;overflow:auto;background:white;border-radius:28px;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.18)}.sheet h2{margin-top:0}.close{float:right;border:0;background:var(--soft);width:40px;height:40px;border-radius:12px;cursor:pointer}
 .small{font-size:13px;color:var(--muted)}
 @media (max-width:560px){.app{padding:14px 12px 100px}.brand h1{font-size:32px}.brand p{font-size:13px}.owl{width:54px;height:54px;font-size:32px}.hero{padding:22px 16px;border-radius:26px}.mic{width:140px;height:140px}.lookup{flex-direction:column}.lookup button{padding:14px}.wordtitle{font-size:30px}.item{grid-template-columns:48px 1fr auto}.tile{width:48px;height:48px}.item h3{font-size:19px}}
-.versionBadge{display:inline-block;margin-top:7px;padding:4px 9px;border-radius:999px;background:#eee8ff;color:#6842d8;font-size:12px;font-weight:800;letter-spacing:.03em;border:1px solid #d9cdfa}.deleteWord{border:1px solid #f0d6dc;background:#fff6f8;color:#b83a55;border-radius:12px;padding:8px 10px;font-weight:800;cursor:pointer;font-size:14px;white-space:nowrap}
+.versionBadge{display:inline-block;margin-top:7px;padding:4px 9px;border-radius:999px;background:#eee8ff;color:#6842d8;font-size:12px;font-weight:800;letter-spacing:.03em;border:1px solid #d9cdfa}.deleteWord{border:1px solid #f0d6dc;background:#fff6f8;color:#b83a55;border-radius:12px;padding:8px 10px;font-weight:800;cursor:pointer;font-size:14px;white-space:nowrap}.modalWordItem{grid-template-columns:54px minmax(0,1fr) auto auto}@media(max-width:560px){.modalWordItem{grid-template-columns:48px minmax(0,1fr) auto}.modalWordItem .deleteWord{grid-column:2/4;justify-self:end}}
 .deleteWord:active{transform:scale(.97)}
 </style>
 
@@ -51,7 +51,7 @@ button,input{font:inherit}
   <div class="top">
     <div class="brand">
       <div class="owl" aria-label="cartoon owl icon">🦉</div>
-      <div><h1>My Words</h1><p>Build your vocabulary while you read.</p><div class="versionBadge" aria-label="App version">v1.4</div></div>
+      <div><h1>My Words</h1><p>Build your vocabulary while you read.</p><div class="versionBadge" aria-label="App version">v1.5</div></div>
     </div>
     <button class="iconbtn" id="clearBtn" title="Clear saved words">⚙️</button>
   </div>
@@ -365,8 +365,62 @@ function openModal(html){$('#modalContent').innerHTML=html;$('#modal').classList
 $('#closeModal').onclick=()=>$('#modal').classList.remove('show'); $('#modal').onclick=e=>{if(e.target.id==='modal')$('#modal').classList.remove('show')};
 $('#viewAllBtn').onclick=()=>showWords('All Saved Words',words);
 function showWords(titleText,list){
-  openModal(`<h2>${titleText}</h2>${list.length?list.map(w=>`<div class="item" style="margin:10px 0" data-modal-word="${escapeHtml(w.word)}"><div class="tile">📘</div><div style="min-width:0;flex:1"><h3>${escapeHtml(title(w.word))}</h3><p>${escapeHtml(w.definition)}</p></div><button class="star ${w.favorite?'on':''}" data-modal-star="${escapeHtml(w.word)}" aria-label="Favorite">${w.favorite?'★':'☆'}</button><button class="deleteWord" data-delete-word="${escapeHtml(w.word)}" aria-label="Delete ${escapeHtml(w.word)}">🗑️ Delete</button></div>`).join(''):'<div class="empty">Nothing here yet.</div>'}`);
+  openModal(`<h2>${titleText}</h2>${list.length?list.map(w=>`<div class="item modalWordItem" style="margin:10px 0" data-modal-word="${escapeHtml(w.word)}"><div class="tile">📘</div><div style="min-width:0;flex:1"><h3>${escapeHtml(title(w.word))}</h3><p>${escapeHtml(w.definition)}</p></div><button class="star ${w.favorite?'on':''}" data-modal-star="${escapeHtml(w.word)}" aria-label="Favorite">${w.favorite?'★':'☆'}</button><button class="deleteWord" data-delete-word="${escapeHtml(w.word)}" aria-label="Delete ${escapeHtml(w.word)}">🗑️ Delete</button></div>`).join(''):'<div class="empty">Nothing here yet.</div>'}`);
 };
+
+$('#modalContent').addEventListener('click',e=>{
+  const fav=e.target.closest('[data-modal-star]');
+  if(fav){
+    const word=fav.dataset.modalStar;
+    toggleFavorite(word);
+    const heading=$('#modalContent h2')?.textContent||'My Words';
+    const list=heading==='Favorites'?words.filter(w=>w.favorite):words;
+    showWords(heading,list);
+    return;
+  }
+
+  const del=e.target.closest('[data-delete-word]');
+  if(del){
+    const word=del.dataset.deleteWord;
+    if(confirm(`Delete “${title(word)}” from My Words?`)){
+      words=words.filter(w=>w.word!==word);
+      if(current?.word===word){
+        current=null;
+        $('#result').classList.remove('show');
+      }
+      saveStore();
+      const heading=$('#modalContent h2')?.textContent||'My Words';
+      const list=heading==='Favorites'?words.filter(w=>w.favorite):words;
+      showWords(heading,list);
+    }
+  }
+});
+
+$('.bottom').addEventListener('click',e=>{
+  const b=e.target.closest('.navbtn');
+  if(!b) return;
+
+  document.querySelectorAll('.navbtn').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+
+  if(b.dataset.view==='home'){
+    $('#modal').classList.remove('show');
+    window.scrollTo({top:0,behavior:'smooth'});
+    return;
+  }
+  if(b.dataset.view==='words'){
+    showWords('My Words',words);
+    return;
+  }
+  if(b.dataset.view==='favorites'){
+    showWords('Favorites',words.filter(w=>w.favorite));
+    return;
+  }
+  if(b.dataset.view==='quiz'){
+    startQuiz();
+  }
+});
+
 function startQuiz(){
   if(words.length<2){openModal('<h2>Quiz Me</h2><div class="empty">Save at least 2 words first, then I can quiz you.</div>');return;}
   const correct=words[Math.floor(Math.random()*words.length)]; const options=[correct,...words.filter(w=>w.word!==correct.word).sort(()=>Math.random()-.5).slice(0,3)].sort(()=>Math.random()-.5);
