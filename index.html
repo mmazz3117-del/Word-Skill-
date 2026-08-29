@@ -1,4 +1,4 @@
-<!-- My Words version 1.8 -->
+<!-- My Words version 1.9 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -64,7 +64,7 @@ button,input{font:inherit}
   <div class="top">
     <div class="brand">
       <div class="owl" aria-label="cartoon owl icon">🦉</div>
-      <div><h1>My Words</h1><p>Build your vocabulary while you read.</p><div class="versionBadge" aria-label="App version">v1.8</div></div>
+      <div><h1>My Words</h1><p>Build your vocabulary while you read.</p><div class="versionBadge" aria-label="App version">v1.9</div></div>
     </div>
     <button class="iconbtn" id="clearBtn" title="Clear saved words">⚙️</button>
   </div>
@@ -152,6 +152,34 @@ function usefulExample(text,word){
   const rx=new RegExp(`\\b${stem.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}\\w*\\b`,'i');
   return rx.test(s)?s:'';
 }
+
+function looksLikeBadOldExample(text,word){
+  const s=String(text||'').toLowerCase();
+  const w=String(word||'').toLowerCase();
+  return (
+    !s ||
+    s.includes(`began to ${w}`) ||
+    s.includes(`tried to ${w}`) ||
+    s.includes(`watched him ${w}`) ||
+    s.includes(`after learning “${w}`) ||
+    s.includes(`using “${w}” in a sentence`) ||
+    s.includes(`the author used “${w}`) ||
+    s.includes('showing no verified examples')
+  );
+}
+
+function repairExamples(entry){
+  if(!entry) return entry;
+  const word=entry.word;
+  const cleaned=(Array.isArray(entry.examples)?entry.examples:[])
+    .map(x=>usefulExample(x,word))
+    .filter(x=>x && !looksLikeBadOldExample(x,word));
+
+  const local=smartLocalExamples(word,entry.partOfSpeech,entry.definition);
+  entry.examples=[...new Set([...cleaned,...local])].slice(0,3);
+  return entry;
+}
+
 
 async function fetchWiktionaryEntry(word){
   try{
@@ -282,44 +310,85 @@ function smartLocalExamples(word,pos,definition){
   const d=String(definition||'').toLowerCase();
   const p=String(pos||'').toLowerCase();
   if(qualityOverrides[word]) return qualityOverrides[word].examples;
-  if(p.includes('adjective')) return [
-    `The writer described the scene as ${word}, giving it a distinctive quality.`,
-    `From a distance, the landscape looked surprisingly ${word}.`,
-    `Her ${word} manner immediately caught his attention.`
-  ];
-  if(p.includes('verb')) return [
-    `She began to ${word} as soon as the opportunity appeared.`,
-    `He watched them ${word} carefully before deciding what to do.`,
-    `They had to ${word} before the situation could change.`
-  ];
-  if(p.includes('adverb')) return [
-    `She moved ${word} through the room.`,
-    `He answered ${word}, making his attitude clear.`,
-    `The events unfolded ${word} over the next few minutes.`
-  ];
+
+  // A few semantic cues make the local examples feel specific rather than generic.
   if(p.includes('noun')){
-    if(/place|valley|hollow|land|area|region|ground|wooded/.test(d)) return [
-      `They crossed the ${word} just before sunset.`,
-      `The ${word} was quiet beneath the trees.`,
-      `A narrow path led down into the ${word}.`
+    if(/valley|hollow|wooded|land|ground|ravine|glen|dale/.test(d)) return [
+      `A narrow trail descended into the ${word}.`,
+      `Morning mist settled quietly over the ${word}.`,
+      `Wildflowers grew along the floor of the ${word}.`
     ];
-    if(/umbrella|shade|sun/.test(d)) return [
+    if(/umbrella|sun|shade|canopy/.test(d)) return [
       `She opened the ${word} to shield herself from the afternoon sun.`,
-      `The ${word} cast a patch of shade across the table.`,
-      `He carried the ${word} while they walked through the garden.`
+      `A bright ${word} shaded the table beside the garden.`,
+      `He carried the ${word} as they walked along the sunny path.`
     ];
-    if(/jewel|necklace|chain|ornament/.test(d)) return [
+    if(/jewel|jewelry|necklace|chain|ornament|gem/.test(d)) return [
       `She wore the ${word} on a thin silver chain.`,
-      `The ${word} gleamed when it caught the light.`,
+      `The ${word} caught the light as she turned.`,
       `He placed the ${word} carefully inside the jewelry box.`
     ];
+    if(/person|man|woman|child|worker|leader|official/.test(d)) return [
+      `The ${word} entered the room just before the meeting began.`,
+      `Everyone turned toward the ${word} when the announcement was made.`,
+      `She spoke briefly with the ${word} after the event.`
+    ];
+    if(/object|tool|device|instrument|container|piece|item/.test(d)) return [
+      `She picked up the ${word} and examined it closely.`,
+      `The ${word} was lying on the table near the window.`,
+      `He packed the ${word} carefully before leaving.`
+    ];
     return [
-      `The ${word} stood out as an important detail in the scene.`,
-      `She pointed toward the ${word} so everyone could see it.`,
-      `They noticed the ${word} as soon as they entered.`
+      `The ${word} appeared several times in the chapter.`,
+      `She paused to look more closely at the ${word}.`,
+      `The ${word} became an important detail in the scene.`
     ];
   }
-  return [];
+
+  if(p.includes('verb')){
+    return [
+      `She decided to ${word} before anyone else arrived.`,
+      `He watched them ${word} and tried to understand why.`,
+      `They continued to ${word} until the task was finished.`
+    ];
+  }
+
+  if(p.includes('adjective')){
+    if(/curve|winding|twist|bend|meander/.test(d)) return [
+      `The ${word} road curved through the hills.`,
+      `A ${word} river wound across the valley floor.`,
+      `They followed a ${word} path through the forest.`
+    ];
+    if(/quiet|subtle|not noticeable|unobtrusive|discreet/.test(d)) return [
+      `She chose a ${word} place near the back of the room.`,
+      `The design was simple and ${word}.`,
+      `His ${word} manner allowed him to blend into the crowd.`
+    ];
+    return [
+      `The author described the scene as ${word}.`,
+      `Her ${word} expression immediately caught his attention.`,
+      `The room had a distinctly ${word} atmosphere.`
+    ];
+  }
+
+  if(p.includes('adverb')){
+    if(/not noticeable|unobtrusive|discreet|quiet|subtle/.test(d)) return [
+      `She unobtrusively slipped into the back row.`,
+      `The waiter unobtrusively cleared the empty glasses.`,
+      `He unobtrusively observed the conversation from the corner.`
+    ].map(s=>s.replace(/unobtrusively/g,word));
+    return [
+      `She moved ${word} through the room without interrupting anyone.`,
+      `He ${word} placed the note on the desk.`,
+      `The change happened ${word}, almost without anyone noticing.`
+    ];
+  }
+
+  return [
+    `The word “${word}” appeared naturally in the passage.`,
+    `Seeing “${word}” in context made its meaning clearer.`,
+    `The sentence used “${word}” in a way that matched its definition.`
+  ];
 }
 
 function parseDatamuseDefinition(item, word){
@@ -404,10 +473,7 @@ async function lookupWord(raw){
     const pageExamples=await fetchWiktionaryPageExamples(word);
     entry.examples=[...new Set([...entry.examples,...pageExamples])].slice(0,3);
   }
-  if(entry.examples.length<3){
-    const local=smartLocalExamples(word,entry.partOfSpeech,entry.definition);
-    entry.examples=[...new Set([...entry.examples,...local])].slice(0,3);
-  }
+  entry=repairExamples(entry);
   current=entry;
   saveCurrent();
   setStatus('');
@@ -454,7 +520,7 @@ $('#lookupBtn').onclick=()=>lookupWord($('#wordInput').value);
 $('#wordInput').addEventListener('keydown',e=>{if(e.key==='Enter')lookupWord(e.target.value)});
 $('#resStar').onclick=()=>{if(!current)return; saveCurrent(); toggleFavorite(current.word)};
 $('#speakBtn').onclick=()=>{if(current && 'speechSynthesis' in window){speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(current.word));}};
-$('#recentList').onclick=e=>{const star=e.target.closest('[data-star]'); if(star){e.stopPropagation();toggleFavorite(star.dataset.star);return;} const item=e.target.closest('[data-word]'); if(item){const w=words.find(x=>x.word===item.dataset.word); if(w){current=w;showResult(w);window.scrollTo({top:0,behavior:'smooth'})}}};
+$('#recentList').onclick=e=>{const star=e.target.closest('[data-star]'); if(star){e.stopPropagation();toggleFavorite(star.dataset.star);return;} const item=e.target.closest('[data-word]'); if(item){const w=words.find(x=>x.word===item.dataset.word); if(w){repairExamples(w);current=w;saveStore();showResult(w);window.scrollTo({top:0,behavior:'smooth'})}}};
 
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 if(SR){
@@ -729,6 +795,8 @@ document.addEventListener('click',e=>{if(e.target?.id==='clearAll'){if(confirm('
   if(changed) localStorage.setItem(storeKey,JSON.stringify(words));
 })();
 
+words=words.map(w=>repairExamples(w));
+localStorage.setItem(storeKey,JSON.stringify(words));
 renderRecent();
 </script>
 </body>
