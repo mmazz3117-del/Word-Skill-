@@ -50,6 +50,46 @@ button,input{font:inherit}
 .quizFeedback{margin:14px 0 0;padding:12px 14px;border-radius:14px;background:#f4f0ff;color:#544879;font-weight:700;line-height:1.4}
 .quizNext{margin-top:14px;width:100%;border:0;border-radius:15px;padding:13px 16px;background:linear-gradient(145deg,var(--purple2),var(--purple));color:#fff;font-weight:900;cursor:pointer}
 .quizScore{text-align:center;padding:8px 0 2px}.quizScoreBig{font-size:46px;font-weight:900;color:var(--purple)}.quizHud{display:flex;justify-content:space-between;gap:8px;margin:8px 0 12px}.quizChip{background:#f2edff;border:1px solid #ddd1ff;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900;color:#6743d7}.quizChallenge{font-size:12px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:#8a74cf;margin-bottom:5px}
+
+.viewPage{display:none}
+.viewPage.active{display:block}
+.libraryPage{max-width:760px;margin:0 auto;padding:26px 22px 140px;min-height:100vh}
+.libraryTop{display:flex;justify-content:space-between;align-items:flex-end;gap:18px;margin:10px 0 22px}
+.libraryTop h1{margin:2px 0 4px;font-size:42px;line-height:1;color:var(--ink)}
+.libraryTop p{margin:0;color:var(--muted);font-size:16px;line-height:1.45;max-width:470px}
+.libraryEyebrow{font-size:12px;font-weight:900;letter-spacing:.12em;color:var(--purple);margin-bottom:8px}
+.libraryCount{background:#eee8ff;color:var(--purple);font-weight:900;border:1px solid #d9cdfa;border-radius:999px;padding:8px 12px;white-space:nowrap}
+.libraryTools{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;margin-bottom:16px}
+.librarySearchWrap{display:flex;align-items:center;gap:8px;background:#fff;border:2px solid #e4def6;border-radius:16px;padding:0 14px;box-shadow:0 8px 24px rgba(53,36,112,.05)}
+.librarySearchWrap input{width:100%;border:0;outline:0;background:transparent;padding:14px 0;font-size:16px;color:var(--ink)}
+.libraryTools select{border:2px solid #e4def6;border-radius:16px;background:#fff;color:var(--ink);padding:0 12px;font-weight:800}
+.libraryStats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:0 0 18px}
+.libraryStats div{background:linear-gradient(180deg,#fff,#faf8ff);border:1px solid #e8e2f5;border-radius:18px;padding:13px;text-align:center}
+.libraryStats strong{display:block;font-size:24px;color:var(--purple)}
+.libraryStats span{display:block;font-size:12px;color:var(--muted);margin-top:2px;font-weight:700}
+.libraryList{display:grid;gap:12px}
+.libraryCard{background:#fff;border:1px solid #e5e0ef;border-radius:22px;padding:16px;box-shadow:0 8px 22px rgba(46,32,88,.05)}
+.libraryCardTop{display:grid;grid-template-columns:54px minmax(0,1fr) auto;gap:12px;align-items:start}
+.libraryBook{width:54px;height:54px;border-radius:16px;background:#f2edff;display:grid;place-items:center;font-size:26px}
+.libraryWord h3{margin:0 0 5px;font-size:23px;color:var(--ink)}
+.libraryWord p{margin:0;color:var(--muted);font-size:15px;line-height:1.45}
+.libraryCardActions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+.libraryOpen,.libraryDelete{border-radius:12px;padding:9px 12px;font-weight:800;cursor:pointer}
+.libraryOpen{border:1px solid #d9cdfa;background:#f4f0ff;color:var(--purple)}
+.libraryDelete{border:1px solid #f0d6dc;background:#fff6f8;color:#b83a55}
+.libraryEmpty{background:#fff;border:2px dashed #ddd4f1;border-radius:22px;padding:34px 18px;text-align:center;color:var(--muted)}
+@media(max-width:560px){
+  .libraryPage{padding:20px 18px 130px}
+  .libraryTop{align-items:flex-start;flex-direction:column}
+  .libraryTop h1{font-size:36px}
+  .libraryTools{grid-template-columns:1fr}
+  .libraryTools select{height:48px}
+  .libraryStats{gap:7px}
+  .libraryStats div{padding:11px 6px}
+  .libraryCardTop{grid-template-columns:48px minmax(0,1fr) auto}
+  .libraryBook{width:48px;height:48px}
+}
+
 </style>
 
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=3">
@@ -60,11 +100,11 @@ button,input{font:inherit}
 
 </head>
 <body>
-<div class="app">
+<div class="app viewPage active" id="homePage">
   <div class="top">
     <div class="brand">
       <div class="owl" aria-label="cartoon owl icon">🦉</div>
-      <div><h1>My Words</h1><p>Build your vocabulary while you read.</p><div class="versionBadge" aria-label="App version">v2.2</div></div>
+      <div><h1>My Words</h1><p>Build your vocabulary while you read.</p><div class="versionBadge" aria-label="App version">v2.3</div></div>
     </div>
     <button class="iconbtn" id="clearBtn" title="Clear saved words">⚙️</button>
   </div>
@@ -97,6 +137,38 @@ button,input{font:inherit}
   </section>
 </div>
 
+
+<section class="libraryPage viewPage" id="libraryPage">
+  <div class="libraryTop">
+    <div>
+      <div class="libraryEyebrow" id="libraryEyebrow">YOUR VOCABULARY</div>
+      <h1 id="libraryTitle">My Words</h1>
+      <p id="librarySubtitle">Your personal collection of words from everything you read.</p>
+    </div>
+    <div class="libraryCount" id="libraryCount">0 words</div>
+  </div>
+
+  <div class="libraryTools">
+    <div class="librarySearchWrap">
+      <span>🔎</span>
+      <input id="librarySearch" type="search" placeholder="Search your words..." autocomplete="off">
+    </div>
+    <select id="librarySort" aria-label="Sort words">
+      <option value="recent">Recently added</option>
+      <option value="az">A–Z</option>
+      <option value="za">Z–A</option>
+    </select>
+  </div>
+
+  <div class="libraryStats">
+    <div><strong id="statTotal">0</strong><span>Learned</span></div>
+    <div><strong id="statFavs">0</strong><span>Favorites</span></div>
+    <div><strong id="statQuiz">0</strong><span>Ready to quiz</span></div>
+  </div>
+
+  <div class="libraryList" id="libraryList"></div>
+</section>
+
 <nav class="bottom">
   <button class="navbtn active" data-view="home"><span>🏠</span>Home</button>
   <button class="navbtn" data-view="words"><span>📖</span>My Words</button>
@@ -119,7 +191,7 @@ const fallback = {
   sinuous:{partOfSpeech:'adjective',phonetic:'SIN-yoo-us',definition:'Having many curves and turns; winding or flowing in a graceful, smooth way.',examples:['A sinuous path wound through the forest.','The river followed a sinuous course through the valley.','The dancer moved with a slow, sinuous grace.']}
 };
 
-function saveStore(){localStorage.setItem(storeKey,JSON.stringify(words));renderRecent();}
+function saveStore(){localStorage.setItem(storeKey,JSON.stringify(words));renderRecent();if($('#libraryPage')?.classList.contains('active'))renderLibraryPage();}
 function normalize(w){return w.trim().toLowerCase().replace(/[^a-z'-]/g,'');}
 function title(w){return w ? w.charAt(0).toUpperCase()+w.slice(1) : ''}
 function setStatus(t){$('#status').textContent=t||''}
@@ -725,26 +797,102 @@ if(SR){
 }else{$('#micBtn').onclick=()=>setStatus('Voice entry is not supported by this browser. You can still type the word below.');}
 
 function openModal(html){$('#modalContent').innerHTML=html;$('#modal').classList.add('show')}
-$('#closeModal').onclick=()=>$('#modal').classList.remove('show'); $('#modal').onclick=e=>{if(e.target.id==='modal')$('#modal').classList.remove('show')};
-$('#viewAllBtn').onclick=()=>showWords('All Saved Words',words);
-function showWords(titleText,list){
-  openModal(`<h2>${titleText}</h2>${list.length?list.map(w=>`<div class="item modalWordItem" style="margin:10px 0" data-modal-word="${escapeHtml(w.word)}"><div class="tile">📘</div><div style="min-width:0;flex:1"><h3>${escapeHtml(title(w.word))}</h3><p>${escapeHtml(w.definition)}</p></div><button class="star ${w.favorite?'on':''}" data-modal-star="${escapeHtml(w.word)}" aria-label="Favorite">${w.favorite?'★':'☆'}</button><button class="deleteWord" data-delete-word="${escapeHtml(w.word)}" aria-label="Delete ${escapeHtml(w.word)}">🗑️ Delete</button></div>`).join(''):'<div class="empty">Nothing here yet.</div>'}`);
-};
+$('#closeModal').onclick=()=>{document.querySelector('#modal').classList.remove('show');const view=$('#libraryPage')?.classList.contains('active')?libraryMode:'home';document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));}; $('#modal').onclick=e=>{if(e.target.id==='modal')$('#modal').classList.remove('show')};
+$('#viewAllBtn').onclick=()=>setActiveView('words');
 
-$('#modalContent').addEventListener('click',e=>{
-  const fav=e.target.closest('[data-modal-star]');
-  if(fav){
-    const word=fav.dataset.modalStar;
-    toggleFavorite(word);
-    const heading=$('#modalContent h2')?.textContent||'My Words';
-    const list=heading==='Favorites'?words.filter(w=>w.favorite):words;
-    showWords(heading,list);
+let libraryMode='words';
+
+function setActiveView(view){
+  document.querySelectorAll('.viewPage').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));
+
+  if(view==='home'){
+    $('#homePage').classList.add('active');
+    window.scrollTo({top:0,behavior:'smooth'});
     return;
   }
 
-  const del=e.target.closest('[data-delete-word]');
+  if(view==='words' || view==='favorites'){
+    $('#libraryPage').classList.add('active');
+    libraryMode=view;
+    $('#librarySearch').value='';
+    $('#libraryTitle').textContent=view==='favorites'?'Favorites':'My Words';
+    $('#libraryEyebrow').textContent=view==='favorites'?'WORDS YOU LOVE':'YOUR VOCABULARY';
+    $('#librarySubtitle').textContent=view==='favorites'
+      ?'The words you starred so you can find and practice them quickly.'
+      :'Your personal collection of words from everything you read.';
+    renderLibraryPage();
+    window.scrollTo({top:0,behavior:'smooth'});
+  }
+}
+
+function getLibraryWords(){
+  let list=libraryMode==='favorites'?words.filter(w=>w.favorite):[...words];
+  const q=$('#librarySearch')?.value.trim().toLowerCase()||'';
+  if(q) list=list.filter(w=>w.word.includes(q)||String(w.definition||'').toLowerCase().includes(q));
+  const sort=$('#librarySort')?.value||'recent';
+  if(sort==='az') list.sort((a,b)=>a.word.localeCompare(b.word));
+  else if(sort==='za') list.sort((a,b)=>b.word.localeCompare(a.word));
+  else list.sort((a,b)=>(b.lastViewed||b.added||0)-(a.lastViewed||a.added||0));
+  return list;
+}
+
+function renderLibraryPage(){
+  const list=getLibraryWords();
+  const sourceCount=libraryMode==='favorites'?words.filter(w=>w.favorite).length:words.length;
+  $('#libraryCount').textContent=`${sourceCount} ${sourceCount===1?'word':'words'}`;
+  $('#statTotal').textContent=words.length;
+  $('#statFavs').textContent=words.filter(w=>w.favorite).length;
+  $('#statQuiz').textContent=words.filter(w=>Array.isArray(w.examples)&&w.examples.length).length;
+
+  $('#libraryList').innerHTML=list.length?list.map((w,i)=>`
+    <article class="libraryCard" data-library-word="${escapeHtml(w.word)}">
+      <div class="libraryCardTop">
+        <div class="libraryBook">${['📘','📚','📖','📝'][i%4]}</div>
+        <div class="libraryWord">
+          <h3>${escapeHtml(title(w.word))}</h3>
+          <p>${escapeHtml(w.definition)}</p>
+        </div>
+        <button class="star ${w.favorite?'on':''}" data-library-star="${escapeHtml(w.word)}" aria-label="Favorite">${w.favorite?'★':'☆'}</button>
+      </div>
+      <div class="libraryCardActions">
+        <button class="libraryOpen" data-library-open="${escapeHtml(w.word)}">View word</button>
+        <button class="libraryDelete" data-library-delete="${escapeHtml(w.word)}">🗑️ Delete</button>
+      </div>
+    </article>`).join('')
+    :`<div class="libraryEmpty">${libraryMode==='favorites'?'⭐ No favorites yet. Tap a star on any word to add it here.':'📚 No words match your search yet.'}</div>`;
+}
+
+$('#librarySearch').addEventListener('input',renderLibraryPage);
+$('#librarySort').addEventListener('change',renderLibraryPage);
+
+$('#libraryList').addEventListener('click',e=>{
+  const fav=e.target.closest('[data-library-star]');
+  if(fav){
+    toggleFavorite(fav.dataset.libraryStar);
+    renderLibraryPage();
+    return;
+  }
+
+  const open=e.target.closest('[data-library-open]');
+  if(open){
+    const w=words.find(x=>x.word===open.dataset.libraryOpen);
+    if(w){
+      setActiveView('home');
+      if(qualityOverrides[w.word] || isInflectionOnlyDefinition(w.definition)) lookupWord(w.word);
+      else{
+        repairExamples(w);
+        current=w;
+        saveStore();
+        showResult(w);
+      }
+    }
+    return;
+  }
+
+  const del=e.target.closest('[data-library-delete]');
   if(del){
-    const word=del.dataset.deleteWord;
+    const word=del.dataset.libraryDelete;
     if(confirm(`Delete “${title(word)}” from My Words?`)){
       words=words.filter(w=>w.word!==word);
       if(current?.word===word){
@@ -752,9 +900,7 @@ $('#modalContent').addEventListener('click',e=>{
         $('#result').classList.remove('show');
       }
       saveStore();
-      const heading=$('#modalContent h2')?.textContent||'My Words';
-      const list=heading==='Favorites'?words.filter(w=>w.favorite):words;
-      showWords(heading,list);
+      renderLibraryPage();
     }
   }
 });
@@ -763,23 +909,24 @@ $('.bottom').addEventListener('click',e=>{
   const b=e.target.closest('.navbtn');
   if(!b) return;
 
-  document.querySelectorAll('.navbtn').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active');
-
   if(b.dataset.view==='home'){
     $('#modal').classList.remove('show');
-    window.scrollTo({top:0,behavior:'smooth'});
+    setActiveView('home');
     return;
   }
   if(b.dataset.view==='words'){
-    showWords('My Words',words);
+    $('#modal').classList.remove('show');
+    setActiveView('words');
     return;
   }
   if(b.dataset.view==='favorites'){
-    showWords('Favorites',words.filter(w=>w.favorite));
+    $('#modal').classList.remove('show');
+    setActiveView('favorites');
     return;
   }
   if(b.dataset.view==='quiz'){
+    document.querySelectorAll('.navbtn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
     startQuiz();
   }
 });
