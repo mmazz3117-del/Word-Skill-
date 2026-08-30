@@ -64,7 +64,7 @@ button,input{font:inherit}
   <div class="top">
     <div class="brand">
       <div class="owl" aria-label="cartoon owl icon">🦉</div>
-      <div><h1>My Words</h1><p>Build your vocabulary while you read.</p><div class="versionBadge" aria-label="App version">v2.0</div></div>
+      <div><h1>My Words</h1><p>Build your vocabulary while you read.</p><div class="versionBadge" aria-label="App version">v2.1</div></div>
     </div>
     <button class="iconbtn" id="clearBtn" title="Clear saved words">⚙️</button>
   </div>
@@ -230,6 +230,25 @@ async function fetchTatoebaExamples(word){
 
 
 const qualityOverrides={
+  obfuscating:{
+    partOfSpeech:'verb',
+    definition:'Making something unclear or difficult to understand, especially deliberately.',
+    examples:[
+      'The spokesperson was accused of obfuscating the issue instead of answering the question.',
+      'Using complicated jargon can end up obfuscating an otherwise simple idea.',
+      'He kept obfuscating the facts so no one could tell what had actually happened.'
+    ]
+  },
+  obfuscate:{
+    partOfSpeech:'verb',
+    definition:'To make something unclear or difficult to understand, especially deliberately.',
+    examples:[
+      'The report seemed designed to obfuscate the real issue.',
+      'Technical language can obfuscate a simple explanation.',
+      'She refused to obfuscate the facts when asked what happened.'
+    ]
+  },
+
   pendant:{partOfSpeech:'noun',definition:'A piece of jewelry that hangs from a necklace, chain, or cord.',examples:[
     'She wore a silver pendant on a delicate chain around her neck.',
     'The pendant caught the light as she turned toward the window.',
@@ -346,6 +365,11 @@ function smartLocalExamples(word,pos,definition){
   }
 
   if(p.includes('verb')){
+    if(word.endsWith('ing')) return [
+      `She was ${word} the issue instead of explaining it clearly.`,
+      `He kept ${word} the details whenever anyone asked a direct question.`,
+      `They accused the speaker of ${word} the facts.`
+    ];
     return [
       `She decided to ${word} before anyone else arrived.`,
       `He watched them ${word} and tried to understand why.`,
@@ -407,7 +431,7 @@ function parseDatamuseDefinition(item, word){
 
 function isInflectionOnlyDefinition(text){
   const s=String(text||'').toLowerCase().trim();
-  return /^(?:the )?(?:present participle(?: and gerund)?|gerund|past participle|simple past(?: tense)?|third-person singular simple present|plural|comparative|superlative) (?:form )?of\b/.test(s);
+  return /(?:present participle|gerund|past participle|simple past|past tense|third-person singular|plural|comparative|superlative).*of/.test(s);
 }
 
 function inflectionLemmaCandidates(word,definition){
@@ -425,23 +449,82 @@ function inflectionLemmaCandidates(word,definition){
   return [...new Set(out.filter(x=>x && x!==word))];
 }
 
-async function resolveInflectedMeaning(word,entry){
-  if(!entry || !isInflectionOnlyDefinition(entry.definition)) return entry;
-  for(const lemma of inflectionLemmaCandidates(word,entry.definition)){
-    try{
-      const r=await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(lemma)}`);
-      if(!r.ok) continue;
+
+async function fetchMeaningForLemma(lemma){
+  if(qualityOverrides[lemma]){
+    return {word:lemma,...qualityOverrides[lemma],phonetic:''};
+  }
+
+  try{
+    const r=await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(lemma)}`);
+    if(r.ok){
       const data=await r.json();
       const base=pickBestDictionarySense(data,lemma);
-      if(!base || !base.definition || isInflectionOnlyDefinition(base.definition)) continue;
-      const pos=(entry.partOfSpeech||base.partOfSpeech||'').toLowerCase();
-      let def=base.definition.replace(/[.;]+$/,'');
-      if(word.endsWith('ing')){
-        if(pos.includes('verb')) def=`The act of ${def.charAt(0).toLowerCase()+def.slice(1)}`;
-        else def=def.charAt(0).toUpperCase()+def.slice(1);
-      }
-      return {...entry,partOfSpeech:entry.partOfSpeech||base.partOfSpeech,definition:def+'.',examples:[]};
-    }catch(e){}
+      if(base && base.definition && !isInflectionOnlyDefinition(base.definition)) return base;
+    }
+  }catch(e){}
+
+  try{
+    const wiki=await fetchWiktionaryEntry(lemma);
+    if(wiki && wiki.definition && !isInflectionOnlyDefinition(wiki.definition)) return wiki;
+  }catch(e){}
+
+  try{
+    const r=await fetch(`https://api.datamuse.com/words?sp=${encodeURIComponent(lemma)}&md=dpr&max=10`);
+    if(r.ok){
+      const data=await r.json();
+      const exact=(data||[]).find(x=>String(x.word||'').toLowerCase()===lemma && Array.isArray(x.defs) && x.defs.length);
+      const base=parseDatamuseDefinition(exact,lemma);
+      if(base && base.definition && !isInflectionOnlyDefinition(base.definition)) return base;
+    }
+  }catch(e){}
+
+  if(fallback[lemma]) return {word:lemma,...fallback[lemma]};
+  return null;
+}
+
+function inflectedPlainDefinition(word,baseDefinition){
+  let d=cleanDefinition(baseDefinition).replace(/[.;]+$/,'').trim();
+  if(!d) return d;
+
+  // Remove a leading "to" from verb definitions when converting to -ing language.
+  if(word.endsWith('ing')){
+    d=d.replace(/^to\s+/i,'');
+    // Common learner-friendly rewrites.
+    if(/^make\b/i.test(d)) d='Making'+d.slice(4);
+    else if(/^cause\b/i.test(d)) d='Causing'+d.slice(5);
+    else if(/^be\b/i.test(d)) d='Being'+d.slice(2);
+    else if(!/ing\b/i.test(d.split(/\s+/)[0])) d=`The act of ${d.charAt(0).toLowerCase()+d.slice(1)}`;
+    return d.charAt(0).toUpperCase()+d.slice(1)+'.';
+  }
+
+  if(word.endsWith('ed')){
+    return `Having been ${d.charAt(0).toLowerCase()+d.slice(1)}.`;
+  }
+
+  return d.charAt(0).toUpperCase()+d.slice(1)+'.';
+}
+
+async function resolveInflectedMeaning(word,entry){
+  if(!entry || !isInflectionOnlyDefinition(entry.definition)) return entry;
+
+  // Prefer an explicit quality override for the exact inflected word.
+  if(qualityOverrides[word]){
+    const q=qualityOverrides[word];
+    return {...entry,...q,word,phonetic:entry.phonetic||''};
+  }
+
+  for(const lemma of inflectionLemmaCandidates(word,entry.definition)){
+    const base=await fetchMeaningForLemma(lemma);
+    if(!base || !base.definition || isInflectionOnlyDefinition(base.definition)) continue;
+
+    return {
+      ...entry,
+      word,
+      partOfSpeech:entry.partOfSpeech||base.partOfSpeech||'verb',
+      definition:inflectedPlainDefinition(word,base.definition),
+      examples:[]
+    };
   }
   return entry;
 }
@@ -501,10 +584,10 @@ async function lookupWord(raw){
     return;
   }
 
-  // For words whose public-dictionary first sense is unusually technical, prefer a clearer everyday sense.
+  // Prefer curated learner-friendly meanings when available.
   if(qualityOverrides[word]){
     const q=qualityOverrides[word];
-    entry={...entry,...q,phonetic:entry.phonetic||'',examples:q.examples};
+    entry={...entry,...q,word,phonetic:entry.phonetic||'',examples:q.examples};
   }
 
   entry=await resolveInflectedMeaning(word,entry);
@@ -562,7 +645,11 @@ $('#lookupBtn').onclick=()=>lookupWord($('#wordInput').value);
 $('#wordInput').addEventListener('keydown',e=>{if(e.key==='Enter')lookupWord(e.target.value)});
 $('#resStar').onclick=()=>{if(!current)return; saveCurrent(); toggleFavorite(current.word)};
 $('#speakBtn').onclick=()=>{if(current && 'speechSynthesis' in window){speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(current.word));}};
-$('#recentList').onclick=e=>{const star=e.target.closest('[data-star]'); if(star){e.stopPropagation();toggleFavorite(star.dataset.star);return;} const item=e.target.closest('[data-word]'); if(item){const w=words.find(x=>x.word===item.dataset.word); if(w){repairExamples(w);current=w;saveStore();showResult(w);window.scrollTo({top:0,behavior:'smooth'})}}};
+$('#recentList').onclick=e=>{const star=e.target.closest('[data-star]'); if(star){e.stopPropagation();toggleFavorite(star.dataset.star);return;} const item=e.target.closest('[data-word]'); if(item){const w=words.find(x=>x.word===item.dataset.word); if(w){
+      if(isInflectionOnlyDefinition(w.definition)){lookupWord(w.word);}
+      else{repairExamples(w);current=w;saveStore();showResult(w);}
+      window.scrollTo({top:0,behavior:'smooth'});
+    }}};
 
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 if(SR){
@@ -807,6 +894,44 @@ document.addEventListener('click',e=>{if(e.target?.id==='clearAll'){if(confirm('
 words=words.map(w=>repairExamples(w));
 localStorage.setItem(storeKey,JSON.stringify(words));
 renderRecent();
+
+async function refreshSavedInflections(){
+  let changed=false;
+  for(let i=0;i<words.length;i++){
+    const w=words[i];
+    if(!isInflectionOnlyDefinition(w.definition)) continue;
+
+    let refreshed={...w};
+
+    if(qualityOverrides[w.word]){
+      refreshed={...refreshed,...qualityOverrides[w.word],word:w.word};
+    }else{
+      for(const lemma of inflectionLemmaCandidates(w.word,w.definition)){
+        const base=await fetchMeaningForLemma(lemma);
+        if(!base) continue;
+        refreshed.definition=inflectedPlainDefinition(w.word,base.definition);
+        refreshed.partOfSpeech=w.partOfSpeech||base.partOfSpeech||'verb';
+        refreshed.examples=[];
+        break;
+      }
+    }
+
+    repairExamples(refreshed);
+    if(refreshed.definition!==w.definition || JSON.stringify(refreshed.examples)!==JSON.stringify(w.examples)){
+      words[i]=refreshed;
+      changed=true;
+    }
+  }
+  if(changed){
+    localStorage.setItem(storeKey,JSON.stringify(words));
+    renderRecent();
+    if(current){
+      const updated=words.find(x=>x.word===current.word);
+      if(updated){current=updated;showResult(updated);}
+    }
+  }
+}
+refreshSavedInflections();
 </script>
 </body>
 </html>
