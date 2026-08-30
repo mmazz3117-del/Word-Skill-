@@ -49,7 +49,7 @@ button,input{font:inherit}
 .quizChoice.wrong{border-color:#e8a0ad;background:#fff1f4;color:#8e3145}
 .quizFeedback{margin:14px 0 0;padding:12px 14px;border-radius:14px;background:#f4f0ff;color:#544879;font-weight:700;line-height:1.4}
 .quizNext{margin-top:14px;width:100%;border:0;border-radius:15px;padding:13px 16px;background:linear-gradient(145deg,var(--purple2),var(--purple));color:#fff;font-weight:900;cursor:pointer}
-.quizScore{text-align:center;padding:8px 0 2px}.quizScoreBig{font-size:46px;font-weight:900;color:var(--purple)}
+.quizScore{text-align:center;padding:8px 0 2px}.quizScoreBig{font-size:46px;font-weight:900;color:var(--purple)}.quizHud{display:flex;justify-content:space-between;gap:8px;margin:8px 0 12px}.quizChip{background:#f2edff;border:1px solid #ddd1ff;border-radius:999px;padding:6px 10px;font-size:12px;font-weight:900;color:#6743d7}.quizChallenge{font-size:12px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;color:#8a74cf;margin-bottom:5px}
 </style>
 
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=3">
@@ -64,7 +64,7 @@ button,input{font:inherit}
   <div class="top">
     <div class="brand">
       <div class="owl" aria-label="cartoon owl icon">🦉</div>
-      <div><h1>My Words</h1><p>Build your vocabulary while you read.</p><div class="versionBadge" aria-label="App version">v1.9</div></div>
+      <div><h1>My Words</h1><p>Build your vocabulary while you read.</p><div class="versionBadge" aria-label="App version">v2.0</div></div>
     </div>
     <button class="iconbtn" id="clearBtn" title="Clear saved words">⚙️</button>
   </div>
@@ -405,6 +405,47 @@ function parseDatamuseDefinition(item, word){
   return {word,partOfSpeech:posMap[partOfSpeech]||partOfSpeech,phonetic,definition,examples:[]};
 }
 
+function isInflectionOnlyDefinition(text){
+  const s=String(text||'').toLowerCase().trim();
+  return /^(?:the )?(?:present participle(?: and gerund)?|gerund|past participle|simple past(?: tense)?|third-person singular simple present|plural|comparative|superlative) (?:form )?of\b/.test(s);
+}
+
+function inflectionLemmaCandidates(word,definition){
+  const out=[];
+  const m=String(definition||'').match(/\bof\s+([a-z][a-z'-]*)\b/i);
+  if(m) out.push(m[1].toLowerCase());
+  if(word.endsWith('ing')){
+    const base=word.slice(0,-3); out.push(base,base+'e');
+    if(base.length>2 && base.at(-1)===base.at(-2)) out.push(base.slice(0,-1));
+  }else if(word.endsWith('ied')) out.push(word.slice(0,-3)+'y');
+  else if(word.endsWith('ed')) out.push(word.slice(0,-2),word.slice(0,-1));
+  else if(word.endsWith('ies')) out.push(word.slice(0,-3)+'y');
+  else if(word.endsWith('es')) out.push(word.slice(0,-2),word.slice(0,-1));
+  else if(word.endsWith('s')) out.push(word.slice(0,-1));
+  return [...new Set(out.filter(x=>x && x!==word))];
+}
+
+async function resolveInflectedMeaning(word,entry){
+  if(!entry || !isInflectionOnlyDefinition(entry.definition)) return entry;
+  for(const lemma of inflectionLemmaCandidates(word,entry.definition)){
+    try{
+      const r=await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(lemma)}`);
+      if(!r.ok) continue;
+      const data=await r.json();
+      const base=pickBestDictionarySense(data,lemma);
+      if(!base || !base.definition || isInflectionOnlyDefinition(base.definition)) continue;
+      const pos=(entry.partOfSpeech||base.partOfSpeech||'').toLowerCase();
+      let def=base.definition.replace(/[.;]+$/,'');
+      if(word.endsWith('ing')){
+        if(pos.includes('verb')) def=`The act of ${def.charAt(0).toLowerCase()+def.slice(1)}`;
+        else def=def.charAt(0).toUpperCase()+def.slice(1);
+      }
+      return {...entry,partOfSpeech:entry.partOfSpeech||base.partOfSpeech,definition:def+'.',examples:[]};
+    }catch(e){}
+  }
+  return entry;
+}
+
 async function lookupWord(raw){
   const word=normalize(raw); if(!word) return;
   $('#wordInput').value=word; setStatus('Looking it up…'); $('#result').classList.remove('show');
@@ -466,6 +507,7 @@ async function lookupWord(raw){
     entry={...entry,...q,phonetic:entry.phonetic||'',examples:q.examples};
   }
 
+  entry=await resolveInflectedMeaning(word,entry);
   entry.definition=cleanDefinition(entry.definition);
   entry.examples=(Array.isArray(entry.examples)?entry.examples:[])
     .map(x=>usefulExample(x,word)).filter(Boolean);
@@ -636,72 +678,37 @@ function blankWord(sentence,word){
 }
 function buildQuizQuestions(){
   const pool=shuffled(words);
-  const count=Math.min(5,Math.max(3,pool.length));
+  const count=Math.min(7,Math.max(5,pool.length));
   const qs=[];
-
   for(let i=0;i<count;i++){
     const target=pool[i%pool.length];
     const others=shuffled(words.filter(w=>w.word!==target.word)).slice(0,3);
-    const type=i%3;
-
+    while(others.length<3) others.push(pool[(i+others.length+1)%pool.length]);
+    const type=i%4;
     if(type===0 && target.examples?.length){
-      // Context question: choose the sentence where the target word belongs.
       const correctSentence=blankWord(target.examples[0],target.word);
-      const distractors=others.map(o=>{
-        const ex=(o.examples||[])[0];
-        return ex?blankWord(ex,o.word):`The meaning of _____ was different in this sentence.`;
-      });
-      const options=shuffled([
-        {value:correctSentence,correct:true},
-        ...distractors.map(x=>({value:x,correct:false}))
-      ]);
-      qs.push({
-        type:'context',
-        word:target.word,
-        prompt:`Which sentence is the best fit for “${title(target.word)}”?`,
-        answer:correctSentence,
-        options,
-        explanation:`“${title(target.word)}” means ${target.definition.charAt(0).toLowerCase()+target.definition.slice(1)}`
-      });
+      const distractors=others.map(o=>{const ex=(o.examples||[])[0];return ex?blankWord(ex,o.word):`The _____ did not match the meaning in this context.`});
+      qs.push({challenge:'Fill the Gap',prompt:`Which sentence is the best fit for “${title(target.word)}”?`,options:shuffled([{value:correctSentence,correct:true},...distractors.map(value=>({value,correct:false}))]),explanation:`“${title(target.word)}” means ${target.definition.charAt(0).toLowerCase()+target.definition.slice(1)}`});
     }else if(type===1){
-      // Word -> definition
-      const options=shuffled([
-        {value:target.definition,correct:true},
-        ...others.map(o=>({value:o.definition,correct:false}))
-      ]);
-      qs.push({
-        type:'definition',
-        word:target.word,
-        prompt:`What does “${title(target.word)}” mean?`,
-        answer:target.definition,
-        options,
-        explanation:target.definition
-      });
+      qs.push({challenge:'Definition Dash',prompt:`What does “${title(target.word)}” mean?`,options:shuffled([{value:target.definition,correct:true},...others.map(o=>({value:o.definition,correct:false}))]),explanation:target.definition});
+    }else if(type===2){
+      qs.push({challenge:'Word Detective',prompt:`Which word matches this meaning?\n\n${target.definition}`,options:shuffled([{value:title(target.word),correct:true},...others.map(o=>({value:title(o.word),correct:false}))]),explanation:`The word is “${title(target.word)}.”`});
     }else{
-      // Definition -> word
-      const options=shuffled([
-        {value:title(target.word),correct:true},
-        ...others.map(o=>({value:title(o.word),correct:false}))
-      ]);
-      qs.push({
-        type:'word',
-        word:target.word,
-        prompt:`Which word matches this meaning?\n\n${target.definition}`,
-        answer:title(target.word),
-        options,
-        explanation:`The word is “${title(target.word)}.”`
-      });
+      const good=(target.examples||[])[0];
+      if(good){
+        const wrongs=others.map(o=>{const ex=(o.examples||[])[0]; return ex?ex.replace(new RegExp(`\\b${o.word}\\b`,'i'),target.word):`The ${target.word} was unrelated to the meaning being tested.`});
+        qs.push({challenge:'Usage Challenge',prompt:`Which sentence uses “${title(target.word)}” correctly?`,options:shuffled([{value:good,correct:true},...wrongs.map(value=>({value,correct:false}))]),explanation:`The correct sentence uses “${title(target.word)}” in the sense: ${target.definition}`});
+      }else i--;
     }
   }
-  return qs;
+  return qs.slice(0,count);
 }
-
 function startQuiz(){
   if(words.length<2){
     openModal('<h2>Quiz Me</h2><div class="empty">Save at least 2 words first, then I can quiz you.</div>');
     return;
   }
-  quizState={questions:buildQuizQuestions(),index:0,score:0,answered:false};
+  quizState={questions:buildQuizQuestions(),index:0,score:0,streak:0,bestStreak:0,xp:0,answered:false};
   renderQuizQuestion();
 }
 
@@ -712,7 +719,9 @@ function renderQuizQuestion(){
   openModal(`
     <h2>Quiz Me</h2>
     <div class="quizCount">Question ${quizState.index+1} of ${total}</div>
+    <div class="quizHud"><span class="quizChip">🔥 Streak: ${quizState.streak}</span><span class="quizChip">✨ ${quizState.xp} XP</span></div>
     <div class="quizProgress"><div class="quizProgressBar" style="width:${pct}%"></div></div>
+    <div class="quizChallenge">${escapeHtml(q.challenge||'Challenge')}</div>
     <div class="quizPrompt">${escapeHtml(q.prompt).replace(/\n/g,'<br>')}</div>
     <div class="quizChoices">
       ${q.options.map((o,j)=>`<button class="quizChoice" data-quiz-choice="${j}">${escapeHtml(o.value)}</button>`).join('')}
@@ -730,7 +739,7 @@ function answerQuiz(choiceIndex){
   quizState.answered=true;
   const q=quizState.questions[quizState.index];
   const picked=q.options[choiceIndex];
-  if(picked.correct) quizState.score++;
+  if(picked.correct){quizState.score++;quizState.streak++;quizState.xp+=10;quizState.bestStreak=Math.max(quizState.bestStreak,quizState.streak);}else{quizState.streak=0;}
 
   document.querySelectorAll('[data-quiz-choice]').forEach((btn,j)=>{
     btn.disabled=true;
@@ -754,7 +763,7 @@ function nextQuizQuestion(){
       <h2>Quiz Complete</h2>
       <div class="quizScore">
         <div class="quizScoreBig">${score}/${total}</div>
-        <p>${msg}</p>
+        <p>${msg}</p><p><b>✨ ${quizState.xp} XP</b> &nbsp; • &nbsp; Best streak 🔥 ${quizState.bestStreak}</p>
         <button class="quizNext" id="quizAgainBtn">Play another round</button>
       </div>
     `);
