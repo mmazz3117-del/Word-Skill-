@@ -109,6 +109,22 @@ button,input{font:inherit}
   .libraryBook{width:48px;height:48px}
 }
 
+
+.wordDetail{padding:4px 2px 8px}
+.wordDetailHead{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin-bottom:12px}
+.wordDetailTitle{margin:0;font-size:34px;color:var(--ink);line-height:1.05}
+.wordDetailMeta{margin-top:7px;color:var(--purple);font-weight:900;font-size:15px}
+.wordDetailDef{font-size:20px;line-height:1.5;color:var(--ink);margin:14px 0 16px}
+.wordDetailExamples{list-style:none;padding:0;margin:0;display:grid;gap:10px}
+.wordDetailExamples li{padding:13px 15px 13px 44px;border-radius:16px;position:relative;line-height:1.45;border:1px solid #dceee0;background:#f2fbf4;color:#36523c}
+.wordDetailExamples li:nth-child(2){background:#f5f1ff;border-color:#ddd0ff;color:#4d426d}
+.wordDetailExamples li:nth-child(3){background:#eff8ff;border-color:#cbe5fb;color:#39546d}
+.wordDetailExamples li:before{content:"“";position:absolute;left:15px;top:4px;font-size:32px;font-weight:900;color:var(--purple)}
+.wordDetailActions{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}
+.wordDetailAction{border:1px solid #d8cdf8;background:#fff;color:var(--ink);border-radius:14px;padding:11px 14px;font-weight:900;cursor:pointer}
+.wordDetailAction.primary{background:#f2edff;color:var(--purple)}
+@media(max-width:560px){.wordDetailTitle{font-size:30px}.wordDetailDef{font-size:18px}}
+
 </style>
 
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=4">
@@ -132,7 +148,7 @@ button,input{font:inherit}
         <div class="miniKicker">📚 YOUR READING COMPANION 📚</div>
         <h1>My Words</h1>
         <p>Build your vocabulary while you read.</p>
-        <div class="versionBadge" aria-label="App version">v2.4</div>
+        <div class="versionBadge" aria-label="App version">v2.5</div>
       </div>
     </div>
   </div>
@@ -825,7 +841,64 @@ if(SR){
 }else{$('#micBtn').onclick=()=>setStatus('Voice entry is not supported by this browser. You can still type the word below.');}
 
 function openModal(html){$('#modalContent').innerHTML=html;$('#modal').classList.add('show')}
-$('#closeModal').onclick=()=>{document.querySelector('#modal').classList.remove('show');const view=$('#libraryPage')?.classList.contains('active')?libraryMode:'home';document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));}; $('#modal').onclick=e=>{if(e.target.id==='modal')$('#modal').classList.remove('show')};
+async function openWordDetail(word){
+  let w=words.find(x=>x.word===word);
+  if(!w) return;
+
+  // Refresh stale "form of..." entries without leaving the library page.
+  let fresh={...w};
+  if(qualityOverrides[word]){
+    fresh={...fresh,...qualityOverrides[word],word};
+  }else if(isInflectionOnlyDefinition(fresh.definition)){
+    fresh=await resolveInflectedMeaning(word,fresh);
+  }
+  repairExamples(fresh);
+
+  const idx=words.findIndex(x=>x.word===word);
+  if(idx>=0){
+    fresh.favorite=!!words[idx].favorite;
+    fresh.added=words[idx].added||fresh.added;
+    fresh.lastViewed=Date.now();
+    words[idx]=fresh;
+    saveStore();
+  }
+
+  const examples=(fresh.examples||[]).map(x=>`<li>${exampleHtml(x,fresh.word)}</li>`).join('');
+  openModal(`
+    <div class="wordDetail" data-detail-word="${escapeHtml(fresh.word)}">
+      <div class="wordDetailHead">
+        <div>
+          <h2 class="wordDetailTitle">${escapeHtml(title(fresh.word))}</h2>
+          <div class="wordDetailMeta">${escapeHtml([fresh.partOfSpeech,fresh.phonetic].filter(Boolean).join(' · '))}</div>
+        </div>
+        <button class="star ${fresh.favorite?'on':''}" id="detailFavorite" aria-label="Favorite">${fresh.favorite?'★':'☆'}</button>
+      </div>
+      <div class="wordDetailDef">${escapeHtml(fresh.definition)}</div>
+      <ul class="wordDetailExamples">${examples}</ul>
+      <div class="wordDetailActions">
+        <button class="wordDetailAction" id="detailHear">🔊 Hear it</button>
+        <button class="wordDetailAction primary" id="detailClose">✓ Done</button>
+      </div>
+    </div>
+  `);
+
+  $('#detailHear').onclick=()=>{
+    if('speechSynthesis' in window){
+      speechSynthesis.cancel();
+      speechSynthesis.speak(new SpeechSynthesisUtterance(fresh.word));
+    }
+  };
+  $('#detailFavorite').onclick=()=>{
+    toggleFavorite(fresh.word);
+    fresh.favorite=!!words.find(x=>x.word===fresh.word)?.favorite;
+    $('#detailFavorite').textContent=fresh.favorite?'★':'☆';
+    $('#detailFavorite').classList.toggle('on',fresh.favorite);
+    renderLibraryPage();
+  };
+  $('#detailClose').onclick=()=>$('#modal').classList.remove('show');
+}
+
+$('#closeModal').onclick=()=>{document.querySelector('#modal').classList.remove('show');const view=$('#libraryPage')?.classList.contains('active')?libraryMode:'home';document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));}; $('#modal').onclick=e=>{if(e.target.id==='modal'){$('#modal').classList.remove('show');const view=$('#libraryPage')?.classList.contains('active')?libraryMode:'home';document.querySelectorAll('.navbtn').forEach(b=>b.classList.toggle('active',b.dataset.view===view));}};
 $('#viewAllBtn').onclick=()=>setActiveView('words');
 
 let libraryMode='words';
@@ -904,17 +977,7 @@ $('#libraryList').addEventListener('click',e=>{
 
   const open=e.target.closest('[data-library-open]');
   if(open){
-    const w=words.find(x=>x.word===open.dataset.libraryOpen);
-    if(w){
-      setActiveView('home');
-      if(qualityOverrides[w.word] || isInflectionOnlyDefinition(w.definition)) lookupWord(w.word);
-      else{
-        repairExamples(w);
-        current=w;
-        saveStore();
-        showResult(w);
-      }
-    }
+    openWordDetail(open.dataset.libraryOpen);
     return;
   }
 
