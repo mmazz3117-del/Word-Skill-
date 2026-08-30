@@ -148,7 +148,7 @@ button,input{font:inherit}
         <div class="miniKicker">📚 YOUR READING COMPANION 📚</div>
         <h1>My Words</h1>
         <p>Build your vocabulary while you read.</p>
-        <div class="versionBadge" aria-label="App version">v2.5</div>
+        <div class="versionBadge" aria-label="App version">v2.6</div>
       </div>
     </div>
   </div>
@@ -346,6 +346,25 @@ async function fetchTatoebaExamples(word){
 
 
 const qualityOverrides={
+  disinterring:{
+    partOfSpeech:'verb',
+    definition:'Digging up or removing something that has been buried, especially a dead body from a grave or tomb. It can also mean bringing something forgotten or hidden back to attention.',
+    examples:[
+      'Workers were disinterring the remains so they could be reburied elsewhere.',
+      'The investigation is disinterring evidence that had been forgotten for decades.',
+      'Historians kept disinterring old records that changed how the event was understood.'
+    ]
+  },
+  disinter:{
+    partOfSpeech:'verb',
+    definition:'To dig up or remove something that has been buried, especially a dead body from a grave or tomb; figuratively, to bring something forgotten or hidden back to attention.',
+    examples:[
+      'The court authorized officials to disinter the remains for further examination.',
+      'The historian hoped to disinter forgotten details from the old archives.',
+      'New evidence helped disinter a story that had nearly vanished from public memory.'
+    ]
+  },
+
   obfuscating:{
     partOfSpeech:'verb',
     definition:'Making something unclear or difficult to understand, especially deliberately.',
@@ -501,6 +520,18 @@ function smartLocalExamples(word,pos,definition){
   }
 
   if(p.includes('verb')){
+    if(/grave|tomb|buried|burial|remains|digging up|exhum/.test(d)){
+      if(word.endsWith('ing')) return [
+        `Workers were ${word} the remains so they could be moved to another burial site.`,
+        `The investigation was ${word} evidence that had been forgotten for years.`,
+        `Researchers were ${word} old records that brought a hidden story back to light.`
+      ];
+      return [
+        `Officials received permission to ${word} the remains for further examination.`,
+        `The historian hoped to ${word} forgotten evidence from the archives.`,
+        `New research may ${word} details that had been buried for decades.`
+      ];
+    }
     if(word.endsWith('ing')) return [
       `She was ${word} the issue instead of explaining it clearly.`,
       `He kept ${word} the details whenever anyone asked a direct question.`,
@@ -569,6 +600,21 @@ function isInflectionOnlyDefinition(text){
   const s=String(text||'').toLowerCase().trim();
   return /\b(?:present participle|gerund|past participle|simple past|past tense|third-person singular|plural|comparative|superlative)\b.*\bof\b/.test(s);
 }
+
+function isLowQualityDefinition(text){
+  const s=cleanDefinition(String(text||'')).trim();
+  if(!s) return true;
+
+  // Obvious grammar fragments or editor shorthand are not good learner definitions.
+  if(/\bthe act of (?:take|make|do|be|go|come)\b/i.test(s)) return true;
+  if(/^(?:one who|that which|the act of)\s+[a-z]+\s+(?:out|up|in|on|at)\b/i.test(s) && s.length<70) return true;
+  if(/\b(?:plural|participle|gerund|past tense|comparative|superlative)\s+of\b/i.test(s)) return true;
+  if(/[{}]|mw-parser-output|font-size|defdate/i.test(s)) return true;
+  if(s.length<18) return true;
+
+  return false;
+}
+
 
 function inflectionLemmaCandidates(word,definition){
   const out=[];
@@ -652,15 +698,25 @@ async function resolveInflectedMeaning(word,entry){
     return {...entry,...q,word,phonetic:entry.phonetic||''};
   }
 
-  if(!isInflectionOnlyDefinition(entry.definition)) return entry;
+  const looksInflected=/(?:ing|ed|ied|ies|ves|es|s)$/.test(word);
+  const needsLemma=isInflectionOnlyDefinition(entry.definition) || (looksInflected && isLowQualityDefinition(entry.definition));
+  if(!needsLemma) return entry;
 
   for(const lemma of inflectionLemmaCandidates(word,entry.definition)){
     const base=await fetchMeaningForLemma(lemma);
-    if(!base || !base.definition || isInflectionOnlyDefinition(base.definition)) continue;
+    if(!base || !base.definition || isInflectionOnlyDefinition(base.definition) || isLowQualityDefinition(base.definition)) continue;
 
     let definition=cleanDefinition(base.definition);
-    if(word.endsWith('ing')) definition=inflectedPlainDefinition(word,definition);
-    else definition=definition.charAt(0).toUpperCase()+definition.slice(1);
+    const pos=(entry.partOfSpeech||base.partOfSpeech||'').toLowerCase();
+
+    if(word.endsWith('ing')){
+      const core=definition.replace(/^to\s+/i,'').replace(/[.;]+$/,'');
+      definition=`Currently ${core.charAt(0).toLowerCase()+core.slice(1)}.`;
+    }else if(word.endsWith('ed')){
+      definition=definition.charAt(0).toUpperCase()+definition.slice(1);
+    }else if(pos.includes('noun') && word.endsWith('s')){
+      definition=definition.charAt(0).toUpperCase()+definition.slice(1);
+    }
 
     return {
       ...entry,
@@ -740,6 +796,12 @@ async function lookupWord(raw){
 
   entry=await resolveInflectedMeaning(word,entry);
   entry.definition=cleanDefinition(entry.definition);
+
+  // Never leave a learner with a terse grammar fragment or malformed dictionary gloss.
+  if(isLowQualityDefinition(entry.definition) && qualityOverrides[word]){
+    const q=qualityOverrides[word];
+    entry={...entry,...q,word,examples:q.examples};
+  }
   entry.examples=(Array.isArray(entry.examples)?entry.examples:[])
     .map(x=>usefulExample(x,word)).filter(Boolean);
   if(entry.examples.length<3){
