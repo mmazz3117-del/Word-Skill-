@@ -148,7 +148,7 @@ button,input{font:inherit}
         <div class="miniKicker">📚 YOUR READING COMPANION 📚</div>
         <h1>My Words</h1>
         <p>Build your vocabulary while you read.</p>
-        <div class="versionBadge" aria-label="App version">v2.6</div>
+        <div class="versionBadge" aria-label="App version">v2.7</div>
       </div>
     </div>
   </div>
@@ -346,6 +346,25 @@ async function fetchTatoebaExamples(word){
 
 
 const qualityOverrides={
+  subsuming:{
+    partOfSpeech:'verb',
+    definition:'Including something as part of a larger category, idea, rule, or group.',
+    examples:[
+      'The new policy is subsuming several smaller rules under one broader standard.',
+      'The report is subsuming both issues under the larger problem of housing costs.',
+      'The theory works by subsuming many individual cases into one general principle.'
+    ]
+  },
+  subsume:{
+    partOfSpeech:'verb',
+    definition:'To include something as part of a larger category, idea, rule, or group.',
+    examples:[
+      'The new framework subsumes several older rules under one standard.',
+      'The report subsumes both problems under the broader issue of affordability.',
+      'A general theory may subsume many individual examples.'
+    ]
+  },
+
   disinterring:{
     partOfSpeech:'verb',
     definition:'Digging up or removing something that has been buried, especially a dead body from a grave or tomb. It can also mean bringing something forgotten or hidden back to attention.',
@@ -520,6 +539,18 @@ function smartLocalExamples(word,pos,definition){
   }
 
   if(p.includes('verb')){
+    if(/include|contain|larger category|broader category|general principle|under another|belonging to/.test(d)){
+      if(word.endsWith('ing')) return [
+        `The new policy is ${word} several smaller rules under one broader standard.`,
+        `The report is ${word} both issues under a larger category.`,
+        `The theory works by ${word} many individual cases into one general principle.`
+      ];
+      return [
+        `The new framework can ${word} several older rules under one standard.`,
+        `The report may ${word} both problems under a broader issue.`,
+        `A general theory can ${word} many individual examples.`
+      ];
+    }
     if(/grave|tomb|buried|burial|remains|digging up|exhum/.test(d)){
       if(word.endsWith('ing')) return [
         `Workers were ${word} the remains so they could be moved to another burial site.`,
@@ -605,12 +636,14 @@ function isLowQualityDefinition(text){
   const s=cleanDefinition(String(text||'')).trim();
   if(!s) return true;
 
-  // Obvious grammar fragments or editor shorthand are not good learner definitions.
-  if(/\bthe act of (?:take|make|do|be|go|come)\b/i.test(s)) return true;
-  if(/^(?:one who|that which|the act of)\s+[a-z]+\s+(?:out|up|in|on|at)\b/i.test(s) && s.length<70) return true;
+  if(/\bthe act of (?:take|make|do|be|go|come|place)\b/i.test(s)) return true;
+  if(/^(?:one who|that which|the act of)\s+[a-z]+\s+(?:out|up|in|on|at|under)\b/i.test(s) && s.length<120) return true;
   if(/\b(?:plural|participle|gerund|past tense|comparative|superlative)\s+of\b/i.test(s)) return true;
   if(/[{}]|mw-parser-output|font-size|defdate/i.test(s)) return true;
   if(s.length<18) return true;
+
+  if(/\b(?:cognition|cognitions|predication|hyponym|hypernym|superordinate|subordinate concept)\b/i.test(s)) return true;
+  if(/\bany one cognition\b/i.test(s)) return true;
 
   return false;
 }
