@@ -155,6 +155,13 @@ button,input{font:inherit}
   .selectMode .libraryCardTop{grid-template-columns:32px 48px minmax(0,1fr) auto}
 }
 
+
+.voiceHint{width:100%;font-size:12px;color:var(--muted);font-weight:700;line-height:1.35;margin-top:-2px}
+.readerVoice{display:inline-flex;align-items:center;gap:6px;margin:3px auto 12px;padding:6px 10px;border-radius:999px;background:#f3efff;color:var(--purple);font-size:12px;font-weight:850}
+@media(max-width:560px){
+  #voiceSelect,#speedSelect,#previewVoiceBtn{grid-column:1/3;width:100%}
+}
+
 </style>
 
   <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png?v=4">
@@ -178,7 +185,7 @@ button,input{font:inherit}
         <div class="miniKicker">📚 YOUR READING COMPANION 📚</div>
         <h1>My Words</h1>
         <p>Build your vocabulary while you read.</p>
-        <div class="versionBadge" aria-label="App version">v2.8</div>
+        <div class="versionBadge" aria-label="App version">v2.9</div>
       </div>
     </div>
   </div>
@@ -247,10 +254,21 @@ button,input{font:inherit}
       <option value="definition">Word + definition</option>
       <option value="example">Word + definition + example</option>
     </select>
+    <select class="reviewMode" id="voiceSelect" aria-label="Reading voice">
+      <option value="auto">✨ Auto / Best available</option>
+    </select>
+    <select class="reviewMode" id="speedSelect" aria-label="Reading speed">
+      <option value="0.78">Relaxed</option>
+      <option value="0.92" selected>Natural</option>
+      <option value="1.05">Brisk</option>
+      <option value="1.18">Fast</option>
+    </select>
+    <button class="reviewBtn" id="previewVoiceBtn">▶ Preview voice</button>
     <button class="reviewBtn listen" id="readSelectedBtn" hidden>🔊 Read selected</button>
     <button class="reviewBtn" id="cancelSelectBtn" hidden>Done selecting</button>
   </div>
   <div class="selectionStatus" id="selectionStatus" hidden>0 selected</div>
+  <div class="voiceHint" id="voiceHint">The app will use the most natural English voice your iPhone makes available.</div>
 
   <div class="libraryList" id="libraryList"></div>
 </section>
@@ -1042,6 +1060,99 @@ let libraryMode='words';
 let librarySelecting=false;
 let selectedLibraryWords=new Set();
 let readerState={items:[],index:0,paused:false,stopped:true,token:0};
+const readerPrefsKey='myWords.readerPrefs.v1';
+let readerPrefs=JSON.parse(localStorage.getItem(readerPrefsKey)||'{}');
+let availableReaderVoices=[];
+
+function saveReaderPrefs(){
+  localStorage.setItem(readerPrefsKey,JSON.stringify(readerPrefs));
+}
+
+function voiceQualityScore(v){
+  const name=String(v?.name||'').toLowerCase();
+  const lang=String(v?.lang||'').toLowerCase();
+  let score=0;
+
+  // Prefer English and local/on-device voices.
+  if(lang.startsWith('en-us')) score+=40;
+  else if(lang.startsWith('en')) score+=30;
+  if(v?.localService) score+=8;
+
+  // Apple commonly exposes these names for higher-quality English voices.
+  const preferred=[
+    ['samantha',32],['ava',31],['allison',30],['susan',29],['zoe',28],
+    ['karen',27],['moira',26],['serena',25],['daniel',24],['aaron',23],
+    ['nicky',22],['joelle',22],['evan',21],['tom',20]
+  ];
+  for(const [needle,pts] of preferred){
+    if(name.includes(needle)){score+=pts;break;}
+  }
+
+  // Prefer labels that sometimes indicate enhanced/premium/natural voices.
+  if(/enhanced|premium|natural|neural/.test(name)) score+=35;
+
+  // Penalize novelty/compact voices when identifiable.
+  if(/compact|novelty|bells|organ|bad news|good news|whisper|zarvox|trinoids/.test(name)) score-=50;
+
+  return score;
+}
+
+function bestAvailableVoice(){
+  const english=availableReaderVoices.filter(v=>String(v.lang||'').toLowerCase().startsWith('en'));
+  const pool=english.length?english:availableReaderVoices;
+  return [...pool].sort((a,b)=>voiceQualityScore(b)-voiceQualityScore(a))[0]||null;
+}
+
+function selectedReaderVoice(){
+  const key=$('#voiceSelect')?.value||readerPrefs.voice||'auto';
+  if(key==='auto') return bestAvailableVoice();
+  return availableReaderVoices.find(v=>`${v.name}|||${v.lang}`===key)||bestAvailableVoice();
+}
+
+function updateVoiceHint(){
+  const voice=selectedReaderVoice();
+  if(!voice){
+    $('#voiceHint').textContent='Voice list is still loading. iPhone may provide it after you tap Read Aloud.';
+    return;
+  }
+  const auto=($('#voiceSelect')?.value||'auto')==='auto';
+  $('#voiceHint').textContent=`${auto?'Auto selected':'Selected'}: ${voice.name} · ${voice.lang}${voice.localService?' · on device':''}`;
+}
+
+function loadReaderVoices(){
+  if(!('speechSynthesis' in window)) return;
+  const voices=speechSynthesis.getVoices()||[];
+  if(!voices.length) return;
+  availableReaderVoices=voices;
+
+  const select=$('#voiceSelect');
+  if(!select) return;
+  const oldValue=readerPrefs.voice||select.value||'auto';
+  const english=voices.filter(v=>String(v.lang||'').toLowerCase().startsWith('en'));
+  const list=(english.length?english:voices).sort((a,b)=>{
+    const langCmp=String(a.lang).localeCompare(String(b.lang));
+    return langCmp||String(a.name).localeCompare(String(b.name));
+  });
+
+  select.innerHTML='<option value="auto">✨ Auto / Best available</option>'+list.map(v=>{
+    const key=`${v.name}|||${v.lang}`;
+    const badge=voiceQualityScore(v)>=65?' ★':'';
+    return `<option value="${escapeHtml(key)}">${escapeHtml(v.name)} (${escapeHtml(v.lang)})${badge}</option>`;
+  }).join('');
+
+  select.value=[...select.options].some(o=>o.value===oldValue)?oldValue:'auto';
+  readerPrefs.voice=select.value;
+  saveReaderPrefs();
+  updateVoiceHint();
+}
+
+if('speechSynthesis' in window){
+  loadReaderVoices();
+  speechSynthesis.onvoiceschanged=loadReaderVoices;
+  setTimeout(loadReaderVoices,250);
+  setTimeout(loadReaderVoices,1000);
+}
+
 
 function updateSelectionControls(){
   const selecting=librarySelecting;
@@ -1096,7 +1207,10 @@ function speakReaderItem(){
   const mode=$('#readMode')?.value||'definition';
   const token=readerState.token;
   const u=new SpeechSynthesisUtterance(buildReaderText(item,mode));
-  u.rate=.92;
+  const voice=selectedReaderVoice();
+  if(voice){u.voice=voice;u.lang=voice.lang||'en-US';}
+  const speed=parseFloat($('#speedSelect')?.value||readerPrefs.speed||'0.92');
+  u.rate=Number.isFinite(speed)?speed:.92;
   u.pitch=1;
   u.onend=()=>{
     if(readerState.stopped || token!==readerState.token) return;
@@ -1122,6 +1236,7 @@ function renderReaderModal(finished=false){
       <h2>${finished?'Review complete':'Reading your words'}</h2>
       <div class="readerNow">${escapeHtml(title(item.word))}</div>
       <div class="readerProgress">${readerState.index+1} of ${readerState.items.length}</div>
+      ${selectedReaderVoice()?`<div class="readerVoice">🎙️ ${escapeHtml(selectedReaderVoice().name)}</div>`:''}
       <div class="wordDetailDef">${escapeHtml(item.definition)}</div>
       ${$('#readMode')?.value==='example' && item.examples?.[0]?`<ul class="wordDetailExamples"><li>${exampleHtml(item.examples[0],item.word)}</li></ul>`:''}
       <div class="readerControls">
@@ -1240,7 +1355,40 @@ $('#librarySearch').addEventListener('input',renderLibraryPage);
 $('#librarySort').addEventListener('change',renderLibraryPage);
 
 
+
+function previewReaderVoice(){
+  if(!('speechSynthesis' in window)){
+    alert('Voice preview is not supported by this browser.');
+    return;
+  }
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance('My Words. Here is a preview of your reading voice.');
+  const voice=selectedReaderVoice();
+  if(voice){u.voice=voice;u.lang=voice.lang||'en-US';}
+  const speed=parseFloat($('#speedSelect')?.value||'0.92');
+  u.rate=Number.isFinite(speed)?speed:.92;
+  u.pitch=1;
+  speechSynthesis.speak(u);
+}
+
+$('#voiceSelect').addEventListener('change',()=>{
+  readerPrefs.voice=$('#voiceSelect').value;
+  saveReaderPrefs();
+  updateVoiceHint();
+});
+$('#speedSelect').addEventListener('change',()=>{
+  readerPrefs.speed=$('#speedSelect').value;
+  saveReaderPrefs();
+});
+$('#previewVoiceBtn').onclick=previewReaderVoice;
+
+// Restore saved speed preference.
+if(readerPrefs.speed && [...$('#speedSelect').options].some(o=>o.value===String(readerPrefs.speed))){
+  $('#speedSelect').value=String(readerPrefs.speed);
+}
+
 $('#selectWordsBtn').onclick=()=>{
+  loadReaderVoices();
   librarySelecting=true;
   selectedLibraryWords.clear();
   updateSelectionControls();
@@ -1256,6 +1404,13 @@ $('#selectAllBtn').onclick=()=>{
   renderLibraryPage();
 };
 $('#readSelectedBtn').onclick=startSelectedReading;
+$('#readMode').addEventListener('change',()=>{
+  readerPrefs.mode=$('#readMode').value;
+  saveReaderPrefs();
+});
+if(readerPrefs.mode && [...$('#readMode').options].some(o=>o.value===readerPrefs.mode)){
+  $('#readMode').value=readerPrefs.mode;
+}
 
 $('#libraryList').addEventListener('click',e=>{
   const select=e.target.closest('[data-library-select]');
